@@ -263,7 +263,7 @@ public class ContractGen {
         Contract contract = generator.generate();
         long finish = System.currentTimeMillis();
         long timeElapsed = finish - start;
-        System.out.println("Generation time: " + timeElapsed);
+        System.out.println("\nGeneration time: " + timeElapsed);
         System.out.println(contract);
         Files.write(Path.of(path + "-contract.txt"), contract.toString().getBytes());
         contract.toJSON(new FileWriter(Path.of(path + "-testcases.json").toFile()));

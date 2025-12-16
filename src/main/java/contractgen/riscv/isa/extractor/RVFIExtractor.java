@@ -51,7 +51,7 @@ public class RVFIExtractor implements Extractor {
         boolean containedUnsafeInstruction = false;
         VcdFile vcd;
         try {
-            vcd = new VcdFile(Files.readString(Path.of(PATH + "sim.vcd")));
+            vcd = new VcdFile(Files.readString(Path.of(PATH + "/sim.vcd")));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

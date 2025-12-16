@@ -179,6 +179,10 @@ public class ParallelIverilogGenerator extends Generator {
                             start = System.currentTimeMillis();
                         }
                         TestResult ctx = MARCH.extractCTX(id, testCase);
+                        if (ctx.getDistinguishingObservations().isEmpty()) {
+                            System.out.println("Warning: No differences found for test case " + testCase + " in thread " + id);
+                            System.exit(1);
+                        }
                         if (DEBUG) {
                             finish = System.currentTimeMillis();
                             timeElapsed = finish - start;
@@ -189,7 +193,7 @@ public class ParallelIverilogGenerator extends Generator {
                         }
                     }
                     case ERROR, TIMEOUT, UNKNOWN -> {
-                        System.out.println("Problem with test case: " + pass);
+                        System.out.println("Problem with test case: " + pass + " in thread " + id);
                         System.out.println(testCase);
                     }
                 }

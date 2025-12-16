@@ -170,7 +170,7 @@ class Synthesize implements Callable<Integer> {
         }
         long finish = System.currentTimeMillis();
         long timeElapsed = finish - start;
-        System.out.println("Generation time: " + timeElapsed);
+        System.out.println("\nGeneration time: " + timeElapsed);
         System.out.println(contract);
         if (txt != null) {
             try {
@@ -247,7 +247,7 @@ class UnsafeInstructions implements Callable<Integer> {
         }
         long finish = System.currentTimeMillis();
         long timeElapsed = finish - start;
-        System.out.println("Generation time: " + timeElapsed);
+        System.out.println("\nGeneration time: " + timeElapsed);
         System.out.println(contract);
         if (txt != null) {
             try {
