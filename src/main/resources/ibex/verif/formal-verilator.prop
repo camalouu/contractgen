@@ -20,23 +20,3 @@
         end
     end
 
-    initial
-	begin
-		$dumpfile("sim.vcd");
-		$dumpvars();
-		//$dumpvars(1, top.ctr);
-		//$dumpvars(1, top.control);
-		//$dumpvars(1, top.atk);
-		//$dumpvars(1, top.instr_mem_1.instr_o);
-		//$dumpvars(1, top.instr_mem_2.instr_o);
-		#100000;
-        $display("TIMEOUT");
-		$finish;
-    end
-
-    always begin
-		clk <= 1;
-        #5;
-		clk <= 0;
-        #5;
-    end

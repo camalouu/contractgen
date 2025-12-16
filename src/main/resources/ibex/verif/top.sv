@@ -3,9 +3,13 @@
 `endif
 
 module top (
-
+`ifdef USEVERILATOR   
+    input logic clk
+`endif
 );
+`ifndef USEVERILATOR   
     (* gclk *) reg clk;
+`endif
 
     logic clock;
     initial clock = 0;
