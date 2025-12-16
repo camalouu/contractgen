@@ -97,7 +97,7 @@ public class ContractGen {
                         case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
-                        case CVA6 -> new CVA6(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
+                        case CVA6 -> new CVA6(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case SODOR_2 -> new SODOR_2(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
                         case SODOR_5 -> new SODOR_5(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
@@ -129,7 +129,7 @@ public class ContractGen {
                         case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
-                        case CVA6 -> new CVA6(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
+                        case CVA6 -> new CVA6(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case SODOR_2 -> new SODOR_2(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
                         case SODOR_5 -> new SODOR_5(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);

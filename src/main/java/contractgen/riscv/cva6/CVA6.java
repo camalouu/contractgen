@@ -40,14 +40,16 @@ public class CVA6 extends MARCH {
     /**
      * The path where simulation takes place.
      */
-    protected String SIMULATION_PATH = "/home/yosys/output/cva6/simulation/";
+
+    private final boolean useVerilator;
 
     /**
      * @param updater   The updater to be used to update the contract.
      * @param testCases The test cases to be used for generation or evaluation.
      */
-    public CVA6(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP) {
+    public CVA6(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP, boolean useVerilator) {
         super(new RISCV(allowed_observations, isa, updater, testCases), new RVFIExtractor(allowed_observations, isSP));
+        this.useVerilator = useVerilator;
     }
 
     @Override
@@ -87,21 +89,23 @@ public class CVA6 extends MARCH {
      * @return A set of two test results
      */
     private TestResult extractCTX(String PATH, TestCase testCase) {
-        VcdFile vcd;
-        try {
+        if (!useVerilator) {
+            VcdFile vcd;
+            try {
             vcd = new VcdFile(Files.readString(Path.of(PATH + "sim.vcd")));
-        } catch (IOException e) {
+            } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-        int failTime = vcd.getTop().getChild("atk").getWire("atk_equiv_o").getLastChangeTime();
-        int fetch_1 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_1_count").getValueAt(failTime), 2);
-        int fetch_2 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_2_count").getValueAt(failTime), 2);
-        int retire = Integer.parseInt(vcd.getTop().getChild("control").getWire("retire_count").getValueAt(failTime), 2);
-        int currentGuess = Integer.max(fetch_1, fetch_2);
-        while (currentGuess >= retire && simulateSteps(PATH, currentGuess) == SIMULATION_RESULT.FAIL) {
+            }
+            int failTime = vcd.getTop().getChild("atk").getWire("atk_equiv_o").getLastChangeTime();
+            int fetch_1 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_1_count").getValueAt(failTime), 2);
+            int fetch_2 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_2_count").getValueAt(failTime), 2);
+            int retire = Integer.parseInt(vcd.getTop().getChild("control").getWire("retire_count").getValueAt(failTime), 2);
+            int currentGuess = Integer.max(fetch_1, fetch_2);
+            while (currentGuess >= retire && simulateSteps(PATH, currentGuess) == SIMULATION_RESULT.FAIL) {
             currentGuess--;
+            }
+            simulateSteps(PATH, currentGuess + 1);
         }
-        simulateSteps(PATH, currentGuess + 1);
         return extractDifferences(PATH, true, testCase.getIndex());
     }
 
@@ -145,7 +149,14 @@ public class CVA6 extends MARCH {
             throw new RuntimeException(e);
         }
          */
-        String output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+        String output;
+        if (useVerilator) {
+            System.out.println("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH);
+            output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+        } else {
+            System.out.println("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH);
+            output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 120);  
+        }
         System.out.println(output);
         System.out.println("Compilation finished.");
     }
@@ -175,7 +186,8 @@ public class CVA6 extends MARCH {
         testCase.getProgram2().printInit(PATH + "init_2.dat");
         testCase.getProgram2().printInstr(PATH + "memory_2.dat");
         try {
-            Files.write(Paths.get(PATH + "count.dat"), StringUtils.toHexEncoding((long) (testCase.getMaxInstructionCount() + 131)).getBytes());
+            String content = StringUtils.toHexEncoding((long) (testCase.getMaxInstructionCount() + 31)) + System.lineSeparator();
+            Files.writeString(Paths.get(PATH + "count.dat"), content);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -214,7 +226,8 @@ public class CVA6 extends MARCH {
      */
     private SIMULATION_RESULT simulateSteps(String PATH, int steps) {
         try {
-            Files.write(Paths.get(PATH + "count.dat"), StringUtils.toHexEncoding((long) steps).getBytes());
+            String content = StringUtils.toHexEncoding((long) steps) + System.lineSeparator();
+            Files.writeString(Paths.get(PATH + "count.dat"), content);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
