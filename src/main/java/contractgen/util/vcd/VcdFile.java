@@ -1,8 +1,10 @@
 package contractgen.util.vcd;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,12 +42,12 @@ public class VcdFile {
     /**
      * The pattern to identify variables.
      */
-    private final Pattern varPattern = Pattern.compile("\\s?(.*?) (.*?) (.*?) (.*?)( .*|$)");
+    private final Pattern varPattern = Pattern.compile("\\s?(.*?)\\s+(.*?)\\s+(.*?)\\s(.*?)(\\s+.*|$)");
 
     /**
      * The set of wires in the vcd file.
      */
-    private final Map<String, Wire> wires = new HashMap<>();
+    private final Map<String, Set<Wire>> wires = new HashMap<>();
 
     /**
      * @param s The vcd trace to be parsed.
@@ -63,6 +65,8 @@ public class VcdFile {
      * @return The top module.
      */
     public Module getTop() {
+        if (top.getChild("top") != null)    
+            return top.getChild("top");
         return top;
     }
 
@@ -81,6 +85,7 @@ public class VcdFile {
             } else {
                 Matcher m = p.matcher(line);
                 if (!m.find()) {
+                    if (line.strip().length() == 0) continue;
                     if (infoStatement.matcher(line).matches()) continue;
                     System.out.println("Unexpected line " + line);
                     continue;
@@ -89,7 +94,7 @@ public class VcdFile {
                 String name = m.group(2) == null ? m.group(4) : m.group(2);
                 if (!wires.containsKey(name))
                     throw new IllegalStateException("Wire " + name + " not found.");
-                wires.get(name).values.put(time, value);
+                wires.get(name).forEach(wire -> wire.values.put(time, value));
             }
         }
     }
@@ -119,7 +124,7 @@ public class VcdFile {
             Pattern p = Pattern.compile("(.*) (.*)");
             Matcher m = p.matcher(content);
             if (m.find()) {
-                if (m.group(1).equals("module") || m.group(1).equals("function") || m.group(1).equals("begin")) {
+                if (m.group(1).equals("module") || m.group(1).equals("function") || m.group(1).equals("interface") || m.group(1).equals("begin")) {
                     Module module = new Module(current, m.group(2));
                     if (current == null) {
                         if (top != null) {
@@ -152,14 +157,20 @@ public class VcdFile {
                         String wire_name = m.group(4);
                         Wire w = new Wire(wire_name, internal_name, width);
                         current.addWire(w);
-                        wires.put(internal_name, w);
+                        if (!wires.containsKey(internal_name)) {
+                            wires.put(internal_name, new HashSet<>());
+                        }
+                        wires.get(internal_name).add(w);
                     }
                     case "integer", "event" -> {
                         int width = Integer.parseInt(m.group(2));
                         String internal_name = m.group(3);
                         String wire_name = m.group(4);
                         Wire w = new Wire(wire_name, internal_name, width);
-                        wires.put(internal_name, w);
+                        if (!wires.containsKey(internal_name)) {
+                            wires.put(internal_name, new HashSet<>());
+                        }
+                        wires.get(internal_name).add(w);
                     }
                     default ->
                             throw new IllegalArgumentException("Unsupported var type " + m.group(1) + " in context " + content);
