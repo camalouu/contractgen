@@ -51,9 +51,9 @@ sed -i -e '/MARKER/e cat verif\/vcd.prop' -e '/MARKER/d' "$LR_VERIF_OUT_DIR"/top
 
 # Read initial memory content from files
 # shellcheck disable=SC2016
-sed -i '/\/\/ Trace: verif\/mem.sv:45:9/i $readmemh({"init_", $sformatf("%0d", ID), ".dat"}, instr_mem, 0, 31);' "$LR_VERIF_OUT_DIR"/mem.v
+sed -i '/\/\/ Trace: verif\/mem.sv:56:9/i $readmemh({"init_", $sformatf("%0d", ID), ".dat"}, instr_mem, 0, 31);' "$LR_VERIF_OUT_DIR"/mem.v
 # shellcheck disable=SC2016
-sed -i '/\/\/ Trace: verif\/mem.sv:45:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, instr_mem, 32, (128 - 1));' "$LR_VERIF_OUT_DIR"/mem.v
+sed -i '/\/\/ Trace: verif\/mem.sv:56:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, instr_mem, 32, (128 - 1));' "$LR_VERIF_OUT_DIR"/mem.v
 
 
 # shellcheck disable=SC2016

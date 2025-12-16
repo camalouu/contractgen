@@ -1,7 +1,41 @@
+`ifndef USEVERILATOR
 import rvfi_pkg::*;
+`endif
 
-module rvfi_unwrap (
+module rvfi_unwrap 
+`ifdef USEVERILATOR
+  #(
+    parameter type rvfi_instr_t = logic
+  )
+`endif
+(
     input rvfi_instr_t rvfi_instr_i,
+`ifdef USEVERILATOR
+    output logic [config_pkg::NRET-1:0]                 valid_o,
+    output logic [config_pkg::NRET*64-1:0]              order_o,
+    output logic [config_pkg::NRET*config_pkg::ILEN-1:0] insn_o,
+    output logic [config_pkg::NRET-1:0]                 trap_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     cause_o,
+    output logic [config_pkg::NRET-1:0]                 halt_o,
+    output logic [config_pkg::NRET-1:0]                 intr_o,
+    output logic [config_pkg::NRET*2-1:0]               mode_o,
+    output logic [config_pkg::NRET*2-1:0]               ixl_o,
+    output logic [config_pkg::NRET*5-1:0]               rs1_addr_o,
+    output logic [config_pkg::NRET*5-1:0]               rs2_addr_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     rs1_rdata_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     rs2_rdata_o,
+    output logic [config_pkg::NRET*5-1:0]               rd_addr_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     rd_wdata_o,
+
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     pc_rdata_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     pc_wdata_o,
+
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     mem_addr_o,
+    output logic [config_pkg::NRET*(riscv::XLEN/8)-1:0] mem_rmask_o,
+    output logic [config_pkg::NRET*(riscv::XLEN/8)-1:0] mem_wmask_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     mem_rdata_o,
+    output logic [config_pkg::NRET*riscv::XLEN-1:0]     mem_wdata_o
+`else
     output logic [ariane_pkg::NRET-1:0]                 valid_o,
     output logic [ariane_pkg::NRET*64-1:0]              order_o,
     output logic [ariane_pkg::NRET*ariane_pkg::ILEN-1:0] insn_o,
@@ -26,6 +60,7 @@ module rvfi_unwrap (
     output logic [ariane_pkg::NRET*(riscv::XLEN/8)-1:0] mem_wmask_o,
     output logic [ariane_pkg::NRET*riscv::XLEN-1:0]     mem_rdata_o,
     output logic [ariane_pkg::NRET*riscv::XLEN-1:0]     mem_wdata_o
+`endif
 );
 
     assign valid_o = rvfi_instr_i.valid;

@@ -230,6 +230,32 @@ module ctr(
      logic waw_4_2;
      assign waw_4_2 = {1'b1, rd_2} == old_rd_2_4;
 
+`ifdef USEVERILATOR
+    typedef struct packed {
+        logic [3:0] format;
+        logic [7:0] op;
+        logic [3:0] funct_3;
+        logic [7:0] funct_7;
+        logic [5:0] rd;
+        logic [5:0] rs1;
+        logic [5:0] rs2;
+        logic [32:0] imm;
+        logic [32:0] reg_rs1;
+        logic [32:0] reg_rs2;
+        logic [32:0] reg_rd;
+        logic [32:0] mem_addr;
+        logic [32:0] mem_r_data;
+        logic [32:0] mem_w_data;
+        logic [2:0] is_branch;
+        logic [2:0] branch_taken;
+        logic [2:0] is_aligned;
+        logic [2:0] is_half_aligned;
+        logic [32:0] new_pc;
+    } ctr_observation_t;
+
+    ctr_observation_t ctr_observation_1;
+    ctr_observation_t ctr_observation_2;
+`else
     struct {
         logic [3:0] format;
         logic [7:0] op;
@@ -273,6 +299,8 @@ module ctr(
         logic [2:0] is_half_aligned;
         logic [32:0] new_pc;
     } ctr_observation_2;
+`endif
+
 
     
     logic [6:0] op_1;

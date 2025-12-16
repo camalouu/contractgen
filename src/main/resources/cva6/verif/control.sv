@@ -21,7 +21,11 @@ module control (
         enable_2_o = 1;
         finished_o = 0;
 
+`ifdef USEVERILATOR
+        $readmemh({"count.dat"}, counters, 0, 0);
+`else
 //        $readmemh({"count.dat"}, MAX_INSTR_COUNT, 0, 0);
+`endif
     end
 
     always @(negedge clk_i) begin
@@ -38,7 +42,11 @@ module control (
         if (!enable_2_o || (fetch_2_count >= MAX_INSTR_COUNT && fetch_2_i))
             enable_2_o = 0;
 
+`ifdef USEVERILATOR
+        if (retire_count >= MAX_INSTR_COUNT)
+`else
         if ((!enable_1_o && !enable_2_o) || retire_count >= MAX_INSTR_COUNT)
+`endif
             finished_o <= 1;
         
     end

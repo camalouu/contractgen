@@ -1,7 +1,18 @@
+`ifdef USEVERILATOR
+`include "rvfi_pkg.sv"
+`include "cva6_axi_pkg.sv"
+
+import ariane_pkg::*;
+import rvfi_pkg::*;
+import cva6_config_pkg::*;
+import build_config_pkg::*;
+`else
 import ariane_pkg::*;
 import cva6_axi_pkg::*;
 import rvfi_pkg::*;
+`endif
 
+`ifndef USEVERILATOR
 /// An AXI4 interface.
 interface AXI_BUS #(
   parameter AXI_ADDR_WIDTH = -1,
@@ -88,12 +99,31 @@ interface AXI_BUS #(
   );
 
 endinterface
+`endif
 
 module top (
-
+`ifdef USEVERILATOR
+    input logic clk,
+    input logic rst_ni
+`endif
 );
-    (* gclk *) reg clk;
+`ifdef USEVERILATOR
+    // `include "./cva6/core/include/rvfi_types.svh"
+    localparam config_pkg::cva6_cfg_t Cfg = build_config_pkg::build_config(cva6_config_pkg::cva6_cfg);
+    // RVFI PROBES
+    typedef `RVFI_PROBES_INSTR_T(Cfg) rvfi_probes_instr_t;
+    typedef `RVFI_PROBES_CSR_T(Cfg) rvfi_probes_csr_t;
+    typedef struct packed {
+        rvfi_probes_csr_t   csr;
+        rvfi_probes_instr_t instr;
+    } rvfi_probes_t;
 
+    typedef `RVFI_CSR_ELMT_T(Cfg) rvfi_csr_elmt_t;
+    typedef `RVFI_INSTR_T(Cfg) rvfi_instr_t;
+    typedef `RVFI_CSR_T(Cfg, rvfi_csr_elmt_t) rvfi_csr_t;
+`else
+    (* gclk *) reg clk;
+`endif
     logic clock;
     initial clock = 0;
     always @(posedge clk) begin
@@ -105,13 +135,18 @@ module top (
 
     logic reset_1;
     logic reset_2;
-	initial begin
+`ifdef USEVERILATOR
+    assign reset_1 = rst_ni;
+    assign reset_2 = rst_ni;
+`else
+    initial begin
 		reset_1 <= 0;
 		reset_2 <= 0;
 		#20;
 		reset_1 <= 1;
 		reset_2 <= 1;
 	end
+`endif
 
 	integer counter;
 	initial counter = 0;
@@ -142,7 +177,14 @@ module top (
     logic issue_2;
     logic finished;
 
+
+`ifdef USEVERILATOR
+    rvfi_probes_t rvfi_1;
+    rvfi_instr_t rvfi_instr_1;
+    rvfi_csr_t rvfi_csr_1;
+`else
     rvfi_instr_t rvfi_1;
+`endif
 
     logic retire_1;
     logic [31:0] retire_instr_1;
@@ -168,8 +210,18 @@ module top (
     logic trap_1;
     logic [31:0] cause_1;
 
-    rvfi_unwrap rvfi_unwrap_1 (
+    rvfi_unwrap
+`ifdef USEVERILATOR
+    #(
+        .rvfi_instr_t(rvfi_instr_t)
+    )
+`endif
+    rvfi_unwrap_1 (
+`ifdef USEVERILATOR
+        .rvfi_instr_i (rvfi_instr_1),
+`else
         .rvfi_instr_i (rvfi_1),
+`endif
         .valid_o(retire_1),
         .insn_o(retire_instr_1),
         .rs1_addr_o(rs1_1),
@@ -194,7 +246,13 @@ module top (
 		.ixl_o()
     );
 
+`ifdef USEVERILATOR
+    rvfi_probes_t rvfi_2;
+    rvfi_instr_t rvfi_instr_2;
+    rvfi_csr_t rvfi_csr_2;
+`else
     rvfi_instr_t rvfi_2;
+`endif
 
     logic retire_2;
     logic [31:0] retire_instr_2;
@@ -220,8 +278,18 @@ module top (
     logic trap_2;
     logic [31:0] cause_2;
 
-    rvfi_unwrap rvfi_unwrap_2 (
+    rvfi_unwrap
+`ifdef USEVERILATOR
+    #(
+        .rvfi_instr_t(rvfi_instr_t)
+    )
+`endif
+    rvfi_unwrap_1 (
+`ifdef USEVERILATOR
+        .rvfi_instr_i (rvfi_instr_2),
+`else
         .rvfi_instr_i (rvfi_2),
+`endif
         .valid_o(retire_2),
         .insn_o(retire_instr_2),
         .rs1_addr_o(rs1_2),
@@ -246,9 +314,15 @@ module top (
 		.ixl_o()
     );
 
+`ifdef USEVERILATOR
+    mem_1 #(
+        .ID                     (1)
+    ) mem_1_inst (
+`else
     mem #(
         .ID                     (1)
     ) mem_1 (
+`endif
         .clk_i                  (clock_1),
         .enable_i               (enable_1),
         .req_i                  (req_1),
@@ -259,9 +333,15 @@ module top (
         .data_o                 (data_r_1)
     );
 
+`ifdef USEVERILATOR
+    mem_2 #(
+        .ID                     (2)
+    ) mem_2_inst (
+`else
     mem #(
         .ID                     (2)
     ) mem_2 (
+`endif
         .clk_i                  (clock_2),
         .enable_i               (enable_2),
         .req_i                  (req_2),
@@ -344,13 +424,21 @@ module top (
     cva6 core_1 (
         .clk_i                  (clock_1),
         .rst_ni                 (reset_1),
+`ifdef USEVERILATOR
+        .boot_addr_i            (64'h8000_0000), // TODO
+`else
         .boot_addr_i            (32'h1000), // TODO
+`endif
         .hart_id_i              (32'h0),
         .irq_i                  (2'b0),
         .ipi_i                  (1'b0),
         .time_irq_i             (1'b0),
         .debug_req_i            (1'b0),
+`ifdef USEVERILATOR
+        .rvfi_probes_o          (rvfi_1),
+`else
         .rvfi_o                 (rvfi_1),
+`endif
         .cvxif_req_o            (),
         .cvxif_resp_i           (0),
         .noc_req_o              (axi_req_1),
@@ -359,15 +447,41 @@ module top (
         .issue_o                (issue_1)
     );
 
+`ifdef USEVERILATOR
+    cva6_rvfi #(
+        .CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg)),
+        .rvfi_instr_t(rvfi_instr_t),
+        .rvfi_csr_t(rvfi_csr_t),
+        .rvfi_probes_instr_t(rvfi_probes_instr_t),
+        .rvfi_probes_csr_t(rvfi_probes_csr_t),
+        .rvfi_probes_t(rvfi_probes_t)
+    ) cva6_rvfi_1 (
+        .clk_i                  (clock_1),
+        .rst_ni                 (reset_1),
+        .rvfi_probes_i          (rvfi_1),
+        .rvfi_instr_o           (rvfi_instr_1),
+        .rvfi_csr_o             (rvfi_csr_1)
+    );
+`endif
+
     cva6 core_2 (
         .clk_i                  (clock_2),
         .rst_ni                 (reset_2),
+`ifdef USEVERILATOR
+        .boot_addr_i            (64'h8000_0000), // TODO
+`else
         .boot_addr_i            (32'h1000), // TODO
+`endif
         .hart_id_i              (32'h0),
         .irq_i                  (2'b0),
         .ipi_i                  (1'b0),
         .time_irq_i             (1'b0),
         .debug_req_i            (1'b0),
+`ifdef USEVERILATOR
+        .rvfi_probes_o          (rvfi_2),
+`else
+        .rvfi_o                 (rvfi_2),
+`endif
         .cvxif_req_o            (),
         .cvxif_resp_i           (0),
         .noc_req_o              (axi_req_2),
@@ -375,6 +489,23 @@ module top (
         .enable_issue_i         (enable_2),
         .issue_o                (issue_2)
     );
+
+`ifdef USEVERILATOR
+    cva6_rvfi #(
+        .CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg)),
+        .rvfi_instr_t(rvfi_instr_t),
+        .rvfi_csr_t(rvfi_csr_t),
+        .rvfi_probes_instr_t(rvfi_probes_instr_t),
+        .rvfi_probes_csr_t(rvfi_probes_csr_t),
+        .rvfi_probes_t(rvfi_probes_t)
+    ) cva6_rvfi_2 (
+        .clk_i                  (clock_2),
+        .rst_ni                 (reset_2),
+        .rvfi_probes_i          (rvfi_2),
+        .rvfi_instr_o           (rvfi_instr_2),
+        .rvfi_csr_o             (rvfi_csr_2)
+    );
+`endif
 
     atk atk (
         .clk_i(clock),
@@ -467,6 +598,33 @@ module top (
 //            $finish();
 //        }
 //    end
+`ifdef USEVERILATOR
+    always @(posedge clk) begin
+        if (finished && ctr_equiv && !atk_equiv) 
+        begin
+            $display("FAIL");
+            $finish;
+        end
+        else if (finished && !ctr_equiv && atk_equiv)
+        begin
+            $display("FALSE_POSITIVE");
+            $finish;
+        end if (finished)
+        begin
+            $display("SUCCESS");
+            $finish;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (trap_1 || trap_2) begin
+            $display("ERROR");
+            $display("Cause 1: %h", cause_1);
+            $display("Cause 2: %h", cause_2);
+            $finish;
+        end
+    end
+`endif
 
 endmodule
 
@@ -538,6 +696,7 @@ module axi_converter (
     assign axi_resp_o.r.user = master.r_user;
 endmodule
 
+`ifndef USEVERILATOR
 module axi2mem #(
     parameter int unsigned AXI_ID_WIDTH      = 10,
     parameter int unsigned AXI_ADDR_WIDTH    = 64,
@@ -805,3 +964,4 @@ module axi2mem #(
         end
     end
 endmodule
+`endif

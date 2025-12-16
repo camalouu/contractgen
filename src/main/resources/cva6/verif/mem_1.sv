@@ -1,13 +1,10 @@
+`ifdef USEVERILATOR
 `define NO_OP     32'h00000013
 `define MAX_INSTR 128
 `define COUNT 32
-`ifdef USEVERILATOR
 `define BOOT_ADDR     64'h80000000
-`else
-`define BOOT_ADDR     64'h00001000
-`endif
 
-module mem #(
+module mem_1 #(
     parameter int unsigned        ID   = 0
 ) (
     input logic clk_i,
@@ -44,15 +41,10 @@ module mem #(
 		for(int i = 0; i < `MAX_INSTR; i = i+1) begin
 			instr_mem[i] = `NO_OP;
 		end
-
-`ifdef USEVERILATOR  
-		$readmemh({"init_", ID, ".dat"}, instr_mem, 0, 31);
-		$readmemh({"memory_", ID, ".dat"}, instr_mem, 32, (`MAX_INSTR - 1));
-`else
-//		$readmemh({"init_", ID, ".dat"}, instr_mem, 0, 31);
-//		$readmemh({"memory_", ID, ".dat"}, instr_mem, 32, (`MAX_INSTR - 1));
-`endif
         
+		$readmemh({"init_1.dat"}, instr_mem, 0, 31);
+		$readmemh({"memory_1.dat"}, instr_mem, 32, (`MAX_INSTR - 1));
+		
         data_o = {`NO_OP, `NO_OP};
     end
 
@@ -146,3 +138,4 @@ module mem #(
         end
     end
 endmodule
+`endif
