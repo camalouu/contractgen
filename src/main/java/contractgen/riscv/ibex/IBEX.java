@@ -58,23 +58,26 @@ IBEX extends MARCH {
     protected String SIMULATION_PATH = "/home/yosys/output/ibex/simulation/";
 
     private final VARIANT VARIANT;
+    private final boolean useVerilator;
 
     /**
      * @param updater   The updater to be used to update the contract.
      * @param testCases The test cases to be used for generation or evaluation.
      */
-    public IBEX(VARIANT VARIANT, Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP) {
+    public IBEX(VARIANT VARIANT, Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP, boolean useVerilator) {
         super(new RISCV(allowed_observations, isa, updater, testCases), new RVFIExtractor(allowed_observations, isSP));
         this.VARIANT = VARIANT;
+        this.useVerilator = useVerilator;
     }
 
     /**
      * @param updater   The updater to be used to update the contract.
      * @param testCases The test cases to be used for generation or evaluation.
      */
-    public IBEX(VARIANT VARIANT, Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP, Set<RISCV_TYPE> unsafeInstructions) {
+    public IBEX(VARIANT VARIANT, Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP, Set<RISCV_TYPE> unsafeInstructions, boolean useVerilator) {
         super(new RISCV(allowed_observations, isa, updater, testCases), new RVFIExtractor(allowed_observations, isSP, unsafeInstructions));
         this.VARIANT = VARIANT;
+        this.useVerilator = useVerilator;
     }
 
     @Override
@@ -162,7 +165,12 @@ IBEX extends MARCH {
         synchronized (getISA().getContract()) {
             replaceString(BASE_PATH + "verif/ctr.sv", "/* CONTRACT */", getISA().getContract().printContract());
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH + " " + VARIANT, false, 240);
+        String output;
+        if (useVerilator) {
+            output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH + " " + VARIANT, false, 240);
+        } else {
+            output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH + " " + VARIANT, false, 240);
+        }
         System.out.println(output);
         System.out.println("Compilation finished.");
     }
@@ -192,7 +200,8 @@ IBEX extends MARCH {
         testCase.getProgram2().printInit(PATH + "init_2.dat");
         testCase.getProgram2().printInstr(PATH + "memory_2.dat");
         try {
-            Files.write(Paths.get(PATH + "count.dat"), StringUtils.toHexEncoding((long) (testCase.getMaxInstructionCount() + 31)).getBytes());
+            String content = StringUtils.toHexEncoding((long) (testCase.getMaxInstructionCount() + 31)) + System.lineSeparator();
+            Files.writeString(Paths.get(PATH + "count.dat"), content);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -241,7 +250,8 @@ IBEX extends MARCH {
      */
     private SIMULATION_RESULT simulateSteps(String PATH, int steps) {
         try {
-            Files.write(Paths.get(PATH + "count.dat"), StringUtils.toHexEncoding((long) steps).getBytes());
+            String content = StringUtils.toHexEncoding((long) steps) + System.lineSeparator();
+            Files.writeString(Paths.get(PATH + "count.dat"), content);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
