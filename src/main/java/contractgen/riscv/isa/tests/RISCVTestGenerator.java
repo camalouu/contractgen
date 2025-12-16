@@ -57,16 +57,19 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      */
     private final List<RISCV_OBSERVATION_TYPE> allowed_observations;
 
+    private final boolean allow_misaligned_memory;
+
     /**
      * @param subsets     the allowed ISA subsets.
      * @param seed        the random seed.
      * @param repetitions the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory) {
         r = new Random(seed);
         this.repetitions = repetitions;
-        this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
+        this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList(); //.filter(t -> !t.equals(RISCV_TYPE.SB) && !t.equals(RISCV_TYPE.SH) && !t.equals(RISCV_TYPE.SW)).toList();
         this.allowed_observations = Arrays.stream(RISCV_OBSERVATION_TYPE.values()).toList();
+        this.allow_misaligned_memory = allow_misaligned_memory;
     }
 
     /**
@@ -75,11 +78,12 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @param seed                 the random seed.
      * @param repetitions          the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
         this.allowed_observations = allowed_observations.stream().toList();
+        this.allow_misaligned_memory = allow_misaligned_memory;
     }
 
     /**
@@ -110,6 +114,45 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         return Collections.unmodifiableList(modifiableList);
     }
 
+    public static List<RISCVInstruction> alignMemoryAddresses(List<RISCVInstruction> instructions) {
+        List<RISCVInstruction> aligned_instructions = new ArrayList<>();
+        for (RISCVInstruction ins: instructions) {
+            if (Set.of(RISCV_TYPE.SH, RISCV_TYPE.SW, RISCV_TYPE.LH, RISCV_TYPE.LHU, RISCV_TYPE.LW).contains(ins.type())) {
+                // if the base register is zero, the we need to modify the immediate since the register is read only.
+                if (ins.rs1() == 0) {
+                    aligned_instructions.add(new RISCVInstruction(
+                        ins.type(),
+                        ins.rd(),
+                        ins.rs1(),
+                        ins.rs2(),
+                        (ins.imm() != null) ? (ins.imm() / 4 * 4) : null
+                    ));
+                    continue;
+                }
+                
+                switch ((int)(ins.imm() % 4)) {
+                    // the immediate ends with xxx00, so the register should end in xxx00, thus AND with 0b...11111100
+                    case 0 -> aligned_instructions.add(RISCVInstruction.ANDI(ins.rs1(), ins.rs1(), MAX_IMM_I - 4));
+                    // the immediate ends with xxx01, so the register should end in xxx11, thus OR with 0b...00000011
+                    case 1 -> aligned_instructions.add(RISCVInstruction.ORI(ins.rs1(), ins.rs1(), 3));
+                    // the immediate ends with xxx10, so the register should end in xxx10, thus AND with 0b...11111110 and OR with 0b...00000010
+                    case 2 -> {
+                        aligned_instructions.add(RISCVInstruction.ANDI(ins.rs1(), ins.rs1(), MAX_IMM_I - 2));
+                        aligned_instructions.add(RISCVInstruction.ORI(ins.rs1(), ins.rs1(), 2));
+                    }
+                    // the immediate ends with xxx11, so the register should end in xxx01, thus AND with 0b...11111100 and OR with 0b...00000001
+                    case 3 -> {
+                        aligned_instructions.add(RISCVInstruction.ANDI(ins.rs1(), ins.rs1(), MAX_IMM_I - 3));
+                        aligned_instructions.add(RISCVInstruction.ORI(ins.rs1(), ins.rs1(), 1));
+                    }
+                }
+                
+            }
+            aligned_instructions.add(ins);
+        }
+        return aligned_instructions;
+    }
+
     /**
      * @param index starting index
      * @return a list of test cases.
@@ -119,6 +162,9 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         for (RISCV_TYPE type : types) {
             Map<Integer, Integer> registers = randomRegisters();
             List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
+            if (!allow_misaligned_memory) {
+                suffix = alignMemoryAddresses(suffix);
+            }
             RISCVInstruction instruction = randomInstructionFromType(type);
             for (RISCV_OBSERVATION_TYPE observation : allowed_observations) {
                 Pair<List<RISCVInstruction>, List<RISCVInstruction>> prefix = alterObservation(observation, instruction);
@@ -128,6 +174,11 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                         prefix = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
                             insertAtSecondToLast(prefix.left(), RISCVInstruction.ANDI(prefix.left().get(prefix.left().size() - 1).rs1(), prefix.left().get(prefix.left().size() - 1).rs1(), MAX_IMM_I - 4)), 
                             insertAtSecondToLast(prefix.right(), RISCVInstruction.ANDI(prefix.right().get(prefix.right().size() - 1).rs1(), prefix.right().get(prefix.right().size() - 1).rs1(), MAX_IMM_I - 4)));
+                    }
+                    if (!allow_misaligned_memory) {
+                        prefix = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
+                            alignMemoryAddresses(prefix.left()),
+                            alignMemoryAddresses(prefix.right()));                
                     }
                     cases.add(new RISCVTestCase(
                             new RISCVProgram(registers, Stream.concat(prefix.left().stream(), suffix.stream()).toList()),

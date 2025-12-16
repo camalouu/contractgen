@@ -103,7 +103,7 @@ class Synthesize implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
@@ -234,7 +234,7 @@ class UnsafeInstructions implements Callable<Integer> {
             System.out.println("Only IBEX is supported.");
             return 0;
         }
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, true);
         Generator generator = new 
         ParallelIverilogGenerator(
             new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, unsafeInstructions, false),
@@ -471,7 +471,7 @@ class Falsify implements Callable<Integer> {
             out.toFile().mkdirs();
             System.out.println(ctr.getCurrentContract());
             Files.write(out.resolve("contract.txt"), ctr.toString().getBytes());
-            TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP);
+            TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator);
             Generator generator = 
             new Falsifier(
                 switch (processor) {

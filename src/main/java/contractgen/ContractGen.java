@@ -90,7 +90,7 @@ public class ContractGen {
         // TRAINING
         Contract training_contract = switch (cfg.TRAINING_SOURCE) {
             case NEW -> {
-                TestCases training_tc = new RISCVIterativeTests(cfg.subsets, cfg.allowed_observations, cfg.TRAINING_NEW_SEED, cfg.THREADS, cfg.TRAINING_NEW_COUNT);
+                TestCases training_tc = new RISCVIterativeTests(cfg.subsets, cfg.allowed_observations, cfg.TRAINING_NEW_SEED, cfg.THREADS, cfg.TRAINING_NEW_COUNT, true);
                 Generator training_generator = 
                 new ParallelIverilogGenerator(
                     switch (cfg.CORE) {
@@ -122,7 +122,7 @@ public class ContractGen {
         // EVAL
         List<TestResult> eval_results = switch (cfg.EVAL_SOURCE) {
             case NEW -> {
-                TestCases eval_tc = new RISCVIterativeTests(cfg.subsets, cfg.allowed_observations, cfg.EVAL_NEW_SEED, cfg.THREADS, cfg.EVAL_NEW_COUNT);
+                TestCases eval_tc = new RISCVIterativeTests(cfg.subsets, cfg.allowed_observations, cfg.EVAL_NEW_SEED, cfg.THREADS, cfg.EVAL_NEW_COUNT, true);
                 Generator eval_generator = 
                 new ParallelIverilogGenerator(
                     switch (cfg.CORE) {

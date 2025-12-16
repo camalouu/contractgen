@@ -15,7 +15,7 @@ public class RISCVRandomTests extends TestCases {
      * @param seed          A seed for the pseudo-random generation.
      * @param repetitions   The number of test cases per possible observation that should be generated.
      */
-    public RISCVRandomTests(Set<RISCV_SUBSET> subsets, long seed, int repetitions) {
-        super(new RISCVTestGenerator(subsets, seed, repetitions).generate());
+    public RISCVRandomTests(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory) {
+        super(new RISCVTestGenerator(subsets, seed, repetitions, allow_misaligned_memory).generate());
     }
 }

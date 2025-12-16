@@ -19,11 +19,11 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      * @return A list of testcase iterators.
      */
-    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP) {
+    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory) {
         List<Iterator<TestCase>> iterators = new ArrayList<>(THREADS);
         Random r = new Random(seed);
         for (int i = 0; i < THREADS; i++) {
-            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), count / THREADS + (count % THREADS > i ? 1 : 0), isSP));
+            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), count / THREADS + (count % THREADS > i ? 1 : 0), isSP, allow_misaligned_memory));
         }
         return iterators;
     }
@@ -35,8 +35,8 @@ public class RISCVIterativeTests extends TestCases {
      * @param THREADS              the number of threads that will be used for generation
      * @param count                the total number of testcases to be generated.
      */
-    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false), count);
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean allow_misaligned_memory) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false, allow_misaligned_memory), count);
     }
 
     /**
@@ -46,7 +46,7 @@ public class RISCVIterativeTests extends TestCases {
      * @param THREADS              the number of threads that will be used for generation
      * @param count                the total number of testcases to be generated.
      */
-    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP), count);
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory), count);
     }
 }
