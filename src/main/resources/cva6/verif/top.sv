@@ -114,13 +114,15 @@ module top (
 	end
 
 	integer counter;
-	initial counter <= 0;
+	initial counter = 0;
 	always @(posedge clock) begin
 		counter <= counter +1;
 	end
 
     logic req_1;
     logic req_2;
+    logic we_1;
+    logic we_2;
     logic [63:0] addr_1;
     logic [63:0] addr_2;
     logic [3:0] be_1;
@@ -136,6 +138,8 @@ module top (
 
     logic enable_1;
     logic enable_2;
+    logic issue_1;
+    logic issue_2;
     logic finished;
 
     rvfi_instr_t rvfi_1;
@@ -161,6 +165,9 @@ module top (
     logic [3:0]  mem_rmask_1;
     logic [3:0]  mem_wmask_1;
 
+    logic trap_1;
+    logic [31:0] cause_1;
+
     rvfi_unwrap rvfi_unwrap_1 (
         .rvfi_instr_i (rvfi_1),
         .valid_o(retire_1),
@@ -177,21 +184,15 @@ module top (
         .pc_rdata_o(pc_rdata_1),
         .pc_wdata_o(new_pc_1),
         .mem_rmask_o(mem_rmask_1),
-        .mem_wmask_o(mem_wmask_1)
+        .mem_wmask_o(mem_wmask_1),
+		.order_o(),
+		.trap_o(trap_1),
+		.cause_o(cause_1),
+		.halt_o(),
+		.intr_o(),
+		.mode_o(),
+		.ixl_o()
     );
-
-    assign mem_r_data_1 = {
-                mem_rmask_1[3] ? mem_rdata_1[31:24] : 8'b0,
-                mem_rmask_1[2] ? mem_rdata_1[23:16] : 8'b0,
-                mem_rmask_1[1] ? mem_rdata_1[15:8] : 8'b0,
-                mem_rmask_1[0] ? mem_rdata_1[7:0] : 8'b0
-            };
-    assign mem_w_data_1 = {
-                mem_wmask_1[3] ? mem_wdata_1[31:24] : 8'b0,
-                mem_wmask_1[2] ? mem_wdata_1[23:16] : 8'b0,
-                mem_wmask_1[1] ? mem_wdata_1[15:8] : 8'b0,
-                mem_wmask_1[0] ? mem_wdata_1[7:0] : 8'b0
-            };
 
     rvfi_instr_t rvfi_2;
 
@@ -216,6 +217,9 @@ module top (
     logic [3:0]  mem_rmask_2;
     logic [3:0]  mem_wmask_2;
 
+    logic trap_2;
+    logic [31:0] cause_2;
+
     rvfi_unwrap rvfi_unwrap_2 (
         .rvfi_instr_i (rvfi_2),
         .valid_o(retire_2),
@@ -232,21 +236,15 @@ module top (
         .pc_rdata_o(pc_rdata_2),
         .pc_wdata_o(new_pc_2),
         .mem_rmask_o(mem_rmask_2),
-        .mem_wmask_o(mem_wmask_2)
+        .mem_wmask_o(mem_wmask_2),
+		.order_o(),
+		.trap_o(trap_2),
+		.cause_o(cause_2),
+		.halt_o(),
+		.intr_o(),
+		.mode_o(),
+		.ixl_o()
     );
-
-    assign mem_r_data_2 = {
-                mem_rmask_2[3] ? mem_rdata_2[31:24] : 8'b0,
-                mem_rmask_2[2] ? mem_rdata_2[23:16] : 8'b0,
-                mem_rmask_2[1] ? mem_rdata_2[15:8] : 8'b0,
-                mem_rmask_2[0] ? mem_rdata_2[7:0] : 8'b0
-            };
-    assign mem_w_data_2 = {
-                mem_wmask_2[3] ? mem_wdata_2[31:24] : 8'b0,
-                mem_wmask_2[2] ? mem_wdata_2[23:16] : 8'b0,
-                mem_wmask_2[1] ? mem_wdata_2[15:8] : 8'b0,
-                mem_wmask_2[0] ? mem_wdata_2[7:0] : 8'b0
-            };
 
     mem #(
         .ID                     (1)
@@ -319,7 +317,9 @@ module top (
         .addr_o                 (addr_1),
         .be_o                   (be_1),
         .data_o                 (data_w_1),
-        .data_i                 (data_r_1)
+        .data_i                 (data_r_1),
+        .user_o                 (),
+        .user_i                 ()
     );
 
     axi2mem #(
@@ -336,7 +336,9 @@ module top (
         .addr_o                 (addr_2),
         .be_o                   (be_2),
         .data_o                 (data_w_2),
-        .data_i                 (data_r_2)
+        .data_i                 (data_r_2),
+        .user_o                 (),
+        .user_i                 ()
     );
 
     cva6 core_1 (
@@ -349,6 +351,8 @@ module top (
         .time_irq_i             (1'b0),
         .debug_req_i            (1'b0),
         .rvfi_o                 (rvfi_1),
+        .cvxif_req_o            (),
+        .cvxif_resp_i           (0),
         .noc_req_o              (axi_req_1),
         .noc_resp_i             (axi_resp_1),
         .enable_issue_i         (enable_1),
@@ -364,7 +368,8 @@ module top (
         .ipi_i                  (1'b0),
         .time_irq_i             (1'b0),
         .debug_req_i            (1'b0),
-        .rvfi_o                 (rvfi_2),
+        .cvxif_req_o            (),
+        .cvxif_resp_i           (0),
         .noc_req_o              (axi_req_2),
         .noc_resp_i             (axi_resp_2),
         .enable_issue_i         (enable_2),

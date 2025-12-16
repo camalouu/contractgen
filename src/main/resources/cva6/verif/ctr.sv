@@ -345,9 +345,9 @@ module ctr(
         .imm_o              (imm_2)
     );
 
-    initial ctr_equiv_o <= 1;
-    initial ctr_observation_1 <= 0;
-    initial ctr_observation_2 <= 0;
+    initial ctr_equiv_o = 1;
+    initial ctr_observation_1 = '{default: '0};
+    initial ctr_observation_2 = '{default: '0};
 
     integer i;
     logic [31:0] temp;

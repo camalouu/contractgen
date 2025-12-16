@@ -4,11 +4,11 @@ module clk_sync(
     input logic retire_2_i,
     output logic clk_1_o,
     output logic clk_2_o,
-    output logic retire_o,
+    output logic retire_o
 );
     initial begin
-        clk_1_o <= 0;
-        clk_2_o <= 0;
+        clk_1_o = 0;
+        clk_2_o = 0;
         //retire_o <= 0;
     end
     // Delays one clock until both are ready for retirement

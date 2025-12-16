@@ -17,9 +17,9 @@ module control (
     assign MAX_INSTR_COUNT = counters[0];
 
     initial begin
-        enable_1_o <= 1;
-        enable_2_o <= 1;
-        finished_o <= 0;
+        enable_1_o = 1;
+        enable_2_o = 1;
+        finished_o = 0;
 
 //        $readmemh({"count.dat"}, MAX_INSTR_COUNT, 0, 0);
     end

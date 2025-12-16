@@ -1,3 +1,6 @@
+`ifndef CVA6_AXI_PKG_SVH
+`define CVA6_AXI_PKG_SVH
+
 package cva6_axi_pkg;
   // TODO how to import automatically from CVA6Cfg
   localparam CVA6ConfigXlen = 32;
@@ -77,3 +80,5 @@ package cva6_axi_pkg;
   } noc_resp_t;
   
 endpackage
+
+`endif // CVA6_AXI_PKG_SVH

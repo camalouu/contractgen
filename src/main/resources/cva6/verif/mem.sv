@@ -33,8 +33,10 @@ module mem #(
     logic        has_data_2;
 
     initial begin
-        last_addr = 0;
-        last_values = 0;
+        for (i = 0; i < `COUNT; i++) begin
+            last_addr[i] = '0;
+            last_values[i] = `NO_OP;
+        end
 		for(int i = 0; i < `MAX_INSTR; i = i+1) begin
 			instr_mem[i] = `NO_OP;
 		end
@@ -42,7 +44,7 @@ module mem #(
 //		$readmemh({"init_", ID, ".dat"}, instr_mem, 0, 31);
 //		$readmemh({"memory_", ID, ".dat"}, instr_mem, 32, (`MAX_INSTR - 1));
 		
-        data_o <= {`NO_OP, `NO_OP};
+        data_o = {`NO_OP, `NO_OP};
     end
 
     integer i;

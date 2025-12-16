@@ -5,7 +5,7 @@ module atk(
     output logic atk_equiv_o
 );
 
-    initial atk_equiv_o <= 1;
+    initial atk_equiv_o = 1;
 
     always @(clk_i) begin
         if (atk_observation_1_i != atk_observation_2_i)
