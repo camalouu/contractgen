@@ -55,6 +55,7 @@ public class RISCVTestGeneratorSP implements RISCVTestGenearatorInterface {
      * The allowed observations.
      */
     private final List<RISCV_OBSERVATION_TYPE> allowed_observations;
+    private final int multi;
 
     /**
      * @param subsets     the allowed ISA subsets.
@@ -62,10 +63,15 @@ public class RISCVTestGeneratorSP implements RISCVTestGenearatorInterface {
      * @param repetitions the number of repetitions to be generated.
      */
     RISCVTestGeneratorSP(Set<RISCV_SUBSET> subsets, long seed, int repetitions) {
+        this(subsets, seed, repetitions, 1);
+    }
+
+    RISCVTestGeneratorSP(Set<RISCV_SUBSET> subsets, long seed, int repetitions, int multi) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
         this.allowed_observations = Arrays.stream(RISCV_OBSERVATION_TYPE.values()).toList();
+        this.multi = multi;
     }
 
     /**
@@ -75,10 +81,15 @@ public class RISCVTestGeneratorSP implements RISCVTestGenearatorInterface {
      * @param repetitions          the number of repetitions to be generated.
      */
     RISCVTestGeneratorSP(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions) {
+        this(subsets, allowed_observations, seed, repetitions, 1);
+    }
+
+    RISCVTestGeneratorSP(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, int multi) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
         this.allowed_observations = allowed_observations.stream().toList();
+        this.multi = multi;
     }
 
     /**
@@ -118,13 +129,55 @@ public class RISCVTestGeneratorSP implements RISCVTestGenearatorInterface {
         for (RISCV_TYPE type : types) {
             Map<Integer, Integer> registers_1 = randomRegisters();
             Map<Integer, Integer> registers_2 = randomRegisters();
-            List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
-            RISCVInstruction instruction = randomInstructionFromType(type);
+            List<RISCVInstruction> suffix_0 = randomSequence(r.nextInt(5, 25));
+            RISCVInstruction instruction_0 = randomInstructionFromType(type);
+            List<RISCVInstruction> sequence_0 = Stream.concat(List.of(instruction_0).stream(), suffix_0.stream()).toList();
+
+            List<RISCVInstruction> p1 = new ArrayList<>();
+            List<RISCVInstruction> p2 = new ArrayList<>();
+
+            List<RISCVInstruction> reset1 = new ArrayList<>();
+            List<RISCVInstruction> reset2 = new ArrayList<>();
+            if (multi > 1) {
+                for (int i = 1; i < NUMBER_REGISTERS; i++) {
+                    if (registers_1.containsKey(i) && registers_1.get(i) != null) {
+                        reset1.add(RISCVInstruction.ADDI(i, 0, registers_1.get(i)));
+                    } else {
+                        reset1.add(RISCVInstruction.ADDI(i, 0, 0));
+                    }
+                }
+                for (int i = 1; i < NUMBER_REGISTERS; i++) {
+                    if (registers_2.containsKey(i) && registers_2.get(i) != null) {
+                        reset2.add(RISCVInstruction.ADDI(i, 0, registers_2.get(i)));
+                    } else {
+                        reset2.add(RISCVInstruction.ADDI(i, 0, 0));
+                    }
+                }
+            }
+
+            for (int i = 0; i < multi; i++) {
+                List<RISCVInstruction> sequence;
+                if (i == 0) {
+                    sequence = sequence_0;
+                } else {
+                    List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
+                    RISCVInstruction instruction = randomInstructionFromType(type);
+                    sequence = Stream.concat(List.of(instruction).stream(), suffix.stream()).toList();
+                }
+
+                if (i > 0) {
+                    p1.addAll(reset1);
+                    p2.addAll(reset2);
+                }
+                p1.addAll(sequence);
+                p2.addAll(sequence);
+            }
+
             for (RISCV_OBSERVATION_TYPE observation : allowed_observations) {
                 cases.add(new RISCVTestCase(
-                    new RISCVProgram(registers_1, Stream.concat(List.of(instruction).stream(), suffix.stream()).toList()),
-                    new RISCVProgram(registers_2, Stream.concat(List.of(instruction).stream(), suffix.stream()).toList()),
-                    suffix.size() + 1, new RISCVTestResult(Set.of(new RISCVObservation(type, observation)), Set.of(), true, index), index++));
+                    new RISCVProgram(registers_1, p1),
+                    new RISCVProgram(registers_2, p2),
+                    Integer.max(p1.size(), p2.size()), new RISCVTestResult(Set.of(new RISCVObservation(type, observation)), Set.of(), true, index), index++));
             }
         }
         return cases;

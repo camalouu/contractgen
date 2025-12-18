@@ -19,11 +19,11 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      * @return A list of testcase iterators.
      */
-    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP) {
+    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, int multi) {
         List<Iterator<TestCase>> iterators = new ArrayList<>(THREADS);
         Random r = new Random(seed);
         for (int i = 0; i < THREADS; i++) {
-            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), count / THREADS + (count % THREADS > i ? 1 : 0), isSP));
+            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), count / THREADS + (count % THREADS > i ? 1 : 0), isSP, multi));
         }
         return iterators;
     }
@@ -36,7 +36,7 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      */
     public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false), count);
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false, 1), count);
     }
 
     /**
@@ -47,6 +47,10 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      */
     public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP), count);
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, 1), count);
+    }
+
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, int multi) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, multi), count);
     }
 }

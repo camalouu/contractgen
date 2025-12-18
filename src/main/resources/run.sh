@@ -17,5 +17,6 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synthesize \
   -n 1000 \
   -t 8 \
   -s 12 \
-  -o /home/yosys/project/final_contract_2M.json \
-  --txt /home/yosys/project/final_contract_2M.txt
+  -o /home/yosys/project/1k-3times-no-reset.json \
+  --multi 3 \
+  --txt /home/yosys/project/1k-3times-no-reset.txt

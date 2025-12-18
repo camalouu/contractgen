@@ -98,9 +98,12 @@ class Synthesize implements Callable<Integer> {
     @Option(names = {"--instruction"}, description = "Always leak the instruction and the PC.")
     boolean leakInstruction = false;
 
+    @Option(names = {"--multi"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    int multi = 1;
+
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, multi);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
