@@ -4,3 +4,6 @@
 [submodule "src/main/resources/ibex/core"]
 	path = src/main/resources/ibex/core
 	url = https://github.com/lowRISC/ibex
+[submodule "src/main/resources/cva6/cva6"]
+	path = src/main/resources/cva6/cva6
+	url = https://github.com/openhwgroup/cva6

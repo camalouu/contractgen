@@ -8,7 +8,7 @@ RUN apt-get update && \
                      cmake curl cmake ninja-build g++ python3-dev python3-setuptools \
                      python3-pip autoconf gperf \
                      gcc-11 g++-11 tclsh ant default-jre swig google-perftools libgoogle-perftools-dev \
-                     python3-dev uuid uuid-dev libfl-dev wget python3-orderedmultidict
+                     python3-dev uuid uuid-dev libfl-dev wget python3-orderedmultidict help2man
 
 WORKDIR /home/yosys
 RUN mkdir tools
@@ -78,7 +78,7 @@ RUN git clone https://github.com/verilator/verilator
 WORKDIR /home/yosys/tools/verilator
 RUN unset VERILATOR_ROOT && \
     git pull && \
-    git checkout v5.042 && \
+    git checkout v5.008 && \
     autoconf && \
     ./configure
 RUN make -j$(nproc)

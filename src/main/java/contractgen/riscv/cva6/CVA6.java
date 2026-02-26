@@ -40,6 +40,7 @@ public class CVA6 extends MARCH {
     /**
      * The path where simulation takes place.
      */
+    protected String SIMULATION_PATH = "/home/yosys/output/cva6/simulation/";
 
     private final boolean useVerilator;
 
