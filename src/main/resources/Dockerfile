@@ -1,7 +1,7 @@
 FROM ubuntu:latest AS build
 
-RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get install -y build-essential clang bison flex libreadline-dev \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get install -y build-essential clang bison flex libreadline-dev \
                      gawk tcl-dev libffi-dev git mercurial graphviz   \
                      xdot pkg-config python3 libftdi-dev gperf \
                      libboost-program-options-dev autoconf libgmp-dev \
@@ -73,6 +73,16 @@ RUN ./configure
 RUN make -j$(nproc)
 RUN make install
 WORKDIR /home/yosys/tools
+
+RUN git clone https://github.com/verilator/verilator
+WORKDIR /home/yosys/tools/verilator
+RUN unset VERILATOR_ROOT && \
+    git pull && \
+    git checkout v5.042 && \
+    autoconf && \
+    ./configure
+RUN make -j$(nproc)
+RUN make install
 
 WORKDIR /home/yosys
 

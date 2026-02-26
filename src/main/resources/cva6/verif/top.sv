@@ -284,7 +284,7 @@ module top (
         .rvfi_instr_t(rvfi_instr_t)
     )
 `endif
-    rvfi_unwrap_1 (
+    rvfi_unwrap_2 (
 `ifdef USEVERILATOR
         .rvfi_instr_i (rvfi_instr_2),
 `else

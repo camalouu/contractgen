@@ -1,0 +1,75 @@
+From 823d13335a07f1062c280d5f038cf4a3ef95df22 Mon Sep 17 00:00:00 2001
+From: Gideon Mohr <s8gimohr@stud.uni-saarland.de>
+Date: Tue, 16 Dec 2025 14:57:23 +0100
+Subject: [PATCH] Patch for contract synthesis
+
+---
+ core/cva6.sv                               |  4 +++-
+ core/include/cv32a6_imac_sv0_config_pkg.sv | 22 ++++++++++++++--------
+ 2 files changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/core/cva6.sv b/core/cva6.sv
+index e42e6c38..dc78bc74 100644
+--- a/core/cva6.sv
++++ b/core/cva6.sv
+@@ -327,7 +327,9 @@ module cva6
+     // noc request, can be AXI or OpenPiton - SUBSYSTEM
+     output noc_req_t noc_req_o,
+     // noc response, can be AXI or OpenPiton - SUBSYSTEM
+-    input noc_resp_t noc_resp_i
++    input noc_resp_t noc_resp_i,
++    input logic enable_issue_i,
++    output logic issue_o
+ );
+ 
+   localparam type interrupts_t = struct packed {
+diff --git a/core/include/cv32a6_imac_sv0_config_pkg.sv b/core/include/cv32a6_imac_sv0_config_pkg.sv
+index 9caf64ab..9fdea275 100644
+--- a/core/include/cv32a6_imac_sv0_config_pkg.sv
++++ b/core/include/cv32a6_imac_sv0_config_pkg.sv
+@@ -66,7 +66,7 @@ package cva6_config_pkg;
+ 
+   localparam config_pkg::cache_type_t CVA6ConfigDcacheType = config_pkg::WT;
+ 
+-  localparam CVA6ConfigMmuPresent = 1;
++  localparam CVA6ConfigMmuPresent = 0;
+ 
+   localparam CVA6ConfigRvfiTrace = 1;
+ 
+@@ -77,7 +77,7 @@ package cva6_config_pkg;
+       FpgaAlteraEn: bit'(0),  // for Altera (only)
+       TechnoCut: bit'(0),
+       SuperscalarEn: bit'(0),
+-      NrCommitPorts: unsigned'(2),
++      NrCommitPorts: unsigned'(1),
+       AxiAddrWidth: unsigned'(CVA6ConfigAxiAddrWidth),
+       AxiDataWidth: unsigned'(CVA6ConfigAxiDataWidth),
+       AxiIdWidth: unsigned'(CVA6ConfigAxiIdWidth),
+@@ -126,12 +126,18 @@ package cva6_config_pkg;
+       NrNonIdempotentRules: unsigned'(2),
+       NonIdempotentAddrBase: 1024'({64'b0, 64'b0}),
+       NonIdempotentLength: 1024'({64'b0, 64'b0}),
+-      NrExecuteRegionRules: unsigned'(3),
+-      ExecuteRegionAddrBase: 1024'({64'h8000_0000, 64'h1_0000, 64'h0}),
+-      ExecuteRegionLength: 1024'({64'h40000000, 64'h10000, 64'h1000}),
+-      NrCachedRegionRules: unsigned'(1),
+-      CachedRegionAddrBase: 1024'({64'h8000_0000}),
+-      CachedRegionLength: 1024'({64'h40000000}),
++      NrExecuteRegionRules: unsigned'(0),
++      ExecuteRegionAddrBase: 1024'(0),
++      ExecuteRegionLength: 1024'(0),
++      NrCachedRegionRules: unsigned'(0),
++      CachedRegionAddrBase: 1024'(0),
++      CachedRegionLength: 1024'(0),
++      // NrExecuteRegionRules: unsigned'(3),
++      // ExecuteRegionAddrBase: 1024'({64'h8000_0000, 64'h1_0000, 64'h0}),
++      // ExecuteRegionLength: 1024'({64'h40000000, 64'h10000, 64'h1000}),
++      // NrCachedRegionRules: unsigned'(1),
++      // CachedRegionAddrBase: 1024'({64'h8000_0000}),
++      // CachedRegionLength: 1024'({64'h40000000}),
+       MaxOutstandingStores: unsigned'(7),
+       DebugEn: bit'(1),
+       AxiBurstWriteEn: bit'(0),
+-- 
+2.43.0
+
