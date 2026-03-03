@@ -106,10 +106,13 @@ class Synthesize implements Callable<Integer> {
     
     @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
     boolean bitDist = false;
+    
+    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
+    boolean randomPrefix = false;
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
@@ -193,7 +196,7 @@ class Synthesize implements Callable<Integer> {
                 sb.append("\tThreads: ").append(threads).append("\n");
                 sb.append("\tRepeats: ").append(reps).append("\n");
                 sb.append("\tBit-Dist: ").append(bitDist).append("\n");
-                // sb.append("\tRandom-Prefix: ").append(randomPrefix).append("\n");
+                sb.append("\tRandom-Prefix: ").append(randomPrefix).append("\n");
                 sb.append("\tSeed: ").append(seed).append("\n");
                 sb.append("\n");
                 sb.append(contract.toString());
