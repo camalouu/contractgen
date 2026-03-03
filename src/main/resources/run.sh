@@ -5,11 +5,13 @@ cd /home/yosys/project
 mvn -q package
 
 platform="IBEX"
+# platform="CVA6"
 count=1000
+reps=12
 suffix="test"
 
-json_out="/home/yosys/project/${platform,,}-${count}-${suffix}.json"
-txt_out="/home/yosys/project/${platform,,}-${count}-${suffix}.txt"
+json_out="/home/yosys/project/${platform,,}-${count}-${reps}rep-${suffix}.json"
+txt_out="/home/yosys/project/${platform,,}-${count}-${reps}rep-${suffix}.txt"
 
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synthesize \
   -p "$platform" \
@@ -20,6 +22,7 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synthesize \
   -s 88 \
   -o "$json_out" \
   --txt "$txt_out" \
+  --reps "$reps" \
   --verilator \
-  --reps 1 \
-  --bit-dist \
+  # --bit-dist \
+  # --random-prefix \

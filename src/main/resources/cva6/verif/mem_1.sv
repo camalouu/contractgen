@@ -1,6 +1,6 @@
 `ifdef USEVERILATOR
 `define NO_OP     32'h00000013
-`define MAX_INSTR 128
+`define MAX_INSTR 2048
 `define COUNT 32
 `define BOOT_ADDR     64'h80000000
 

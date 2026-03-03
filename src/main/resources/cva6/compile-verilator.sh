@@ -29,7 +29,7 @@ sed -i -e '/MARKER/e cat verif\/vcd.prop' -e '/MARKER/d' "$LR_VERIF_OUT_DIR"/top
 # shellcheck disable=SC2016
 sed -i '/\/\/ Trace: verif\/mem.sv:45:9/i $readmemh({"init_", $sformatf("%0d", ID), ".dat"}, instr_mem, 0, 31);' "$LR_VERIF_OUT_DIR"/mem.sv
 # shellcheck disable=SC2016
-sed -i '/\/\/ Trace: verif\/mem.sv:45:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, instr_mem, 32, (128 - 1));' "$LR_VERIF_OUT_DIR"/mem.sv
+sed -i '/\/\/ Trace: verif\/mem.sv:45:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, instr_mem, 32, (2048 - 1));' "$LR_VERIF_OUT_DIR"/mem.sv
 
 
 # shellcheck disable=SC2016

@@ -68,7 +68,7 @@ sed -i -e '/MARKER/e cat verif\/formal.prop' -e '/MARKER/d' "$LR_VERIF_OUT_DIR"/
 # shellcheck disable=SC2016
 sed -i '/\/\/ Trace: verif\/instr_mem.sv:31:9/i $readmemh({"init_", $sformatf("%0d", ID), ".dat"}, mem, 0, 31);' "$LR_VERIF_OUT_DIR"/instr_mem.v
 # shellcheck disable=SC2016
-sed -i '/\/\/ Trace: verif\/instr_mem.sv:31:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, mem, 32, (128 - 1));' "$LR_VERIF_OUT_DIR"/instr_mem.v
+sed -i '/\/\/ Trace: verif\/instr_mem.sv:31:9/i $readmemh({"memory_", $sformatf("%0d", ID), ".dat"}, mem, 32, (2048 - 1));' "$LR_VERIF_OUT_DIR"/instr_mem.v
 
 # shellcheck disable=SC2016
 sed -i '/\/\/ Trace: verif\/control.sv:22:9/i $readmemh({"count.dat"}, counters, 0, 0);' "$LR_VERIF_OUT_DIR"/control.v
