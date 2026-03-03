@@ -20,5 +20,6 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synthesize \
   -s 88 \
   -o "$json_out" \
   --txt "$txt_out" \
+  --verilator \
   --reps 1 \
-  --verilator
+  --bit-dist \

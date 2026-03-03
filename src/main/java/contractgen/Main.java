@@ -37,7 +37,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class}, description = "Main application command.")
+@Command(name = "main", subcommands = {Synthesize.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -103,10 +103,13 @@ class Synthesize implements Callable<Integer> {
     
     @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
     int reps = 1;
+    
+    @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
+    boolean bitDist = false;
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
@@ -180,7 +183,21 @@ class Synthesize implements Callable<Integer> {
         System.out.println(contract);
         if (txt != null) {
             try {
-                Files.write(Path.of(txt.getPath()), contract.toString().getBytes());
+                StringBuilder sb = new StringBuilder();
+                sb.append("Summary:\n");
+                sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
+                sb.append("\tProcessor: ").append(processor).append("\n");
+                sb.append("\tISA: ").append(isa).append("\n");
+                sb.append("\tTemplate: ").append(template).append("\n");
+                sb.append("\tCount: ").append(number).append("\n");
+                sb.append("\tThreads: ").append(threads).append("\n");
+                sb.append("\tRepeats: ").append(reps).append("\n");
+                sb.append("\tBit-Dist: ").append(bitDist).append("\n");
+                // sb.append("\tRandom-Prefix: ").append(randomPrefix).append("\n");
+                sb.append("\tSeed: ").append(seed).append("\n");
+                sb.append("\n");
+                sb.append(contract.toString());
+                Files.write(Path.of(txt.getPath()), sb.toString().getBytes());
             } catch (IOException e) {
             }
         }
@@ -493,6 +510,43 @@ class Falsify implements Callable<Integer> {
             generator.generate();
         } catch (IOException e) {
             e.printStackTrace();
+        }
+        return 0;
+    }
+}
+
+@Command(name = "statistics", mixinStandardHelpOptions = true, description = "Generate learning curve statistics")
+class Stats implements Callable<Integer> {
+
+    @Option(names = {"-t", "--training"}, required = true, description = "Training set (JSON)")
+    File training;
+
+    @Option(names = {"-e", "--eval"}, required = true, description = "Evaluation set (JSON)")
+    File eval;
+
+    @Option(names = {"-o", "--output"}, required = true, description = "Output CSV")
+    File out;
+
+    @Option(names = {"-n", "--threads"}, defaultValue = "1", description = "Number of threads")
+    int threads;
+
+    @Option(names = {"-i", "--isa"}, defaultValue = "BASE", description = "ISA subsets (BASE, M)")
+    String isaString;
+
+    @Option(names = {"-c", "--contract"}, defaultValue = "BASE", description = "Contract template (BASE, ALIGNED, BRANCH, DEPENDENCIES)")
+    String templateString;
+
+    @Override
+    public Integer call() {
+        Set<RISCV_SUBSET> isa = Arrays.stream(isaString.split(",")).map(RISCV_SUBSET::valueOf).collect(Collectors.toSet());
+        Set<RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP> groups = Arrays.stream(templateString.split(",")).map(RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP::valueOf).collect(Collectors.toSet());
+        Set<RISCV_OBSERVATION_TYPE> contract_template = RISCV_OBSERVATION_TYPE.getGroups(groups);
+
+        try {
+            Statistics.genStatsParallel(training.getPath(), eval.getPath(), out.getPath(), threads, 0, contract_template, isa);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return 1;
         }
         return 0;
     }

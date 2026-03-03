@@ -60,19 +60,23 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
     private final boolean allow_misaligned_memory;
     
     private final int reps;
+    
+    private final boolean bitDist;
+    
 
     /**
      * @param subsets     the allowed ISA subsets.
      * @param seed        the random seed.
      * @param repetitions the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList(); //.filter(t -> !t.equals(RISCV_TYPE.SB) && !t.equals(RISCV_TYPE.SH) && !t.equals(RISCV_TYPE.SW)).toList();
         this.allowed_observations = Arrays.stream(RISCV_OBSERVATION_TYPE.values()).toList();
         this.allow_misaligned_memory = allow_misaligned_memory;
         this.reps = reps;
+        this.bitDist = bitDist;
     }
 
     /**
@@ -81,13 +85,14 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @param seed                 the random seed.
      * @param repetitions          the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory, int reps) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
         this.allowed_observations = allowed_observations.stream().toList();
         this.allow_misaligned_memory = allow_misaligned_memory;
         this.reps = reps;
+        this.bitDist = bitDist;
     }
 
     /**
@@ -239,7 +244,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         Map<Integer, Integer> result = new HashMap<>(NUMBER_REGISTERS - 1);
         for (int i = 1; i < NUMBER_REGISTERS; i++) {
             if (r.nextBoolean()) {
-                result.put(i, r.nextInt(MAX_IMM_I));
+                result.put(i, (int) randomImmediate(MAX_IMM_I));
             } else {
                 if (r.nextBoolean()) {
                     result.put(i, null);
@@ -280,8 +285,8 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             }
             case IMM -> {
                 if (instruction.imm() == null) yield null;
-                long imm_1 = r.nextLong(getBound(instruction));
-                long imm_2 = r.nextLong(getBound(instruction));
+                long imm_1 = randomImmediate(getBound(instruction));
+                long imm_2 = randomImmediate(getBound(instruction));
                 if (instruction.type().getFormat() == RISCV_FORMAT.BTYPE || instruction.type() == RISCV_TYPE.JAL || instruction.type() == RISCV_TYPE.JALR) {
                     imm_1 = imm_1 / 4 * 4;
                     imm_2 = imm_2 / 4 * 4;
@@ -292,21 +297,21 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             }
             case REG_RS1 -> {
                 if (instruction.rs1() == null) yield null;
-                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs1(), 0, r.nextLong(MAX_IMM_I));
-                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs1(), 0, r.nextLong(MAX_IMM_I));
+                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs1(), 0, randomImmediate(MAX_IMM_I));
+                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs1(), 0, randomImmediate(MAX_IMM_I));
                 yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
             }
             case REG_RS2 -> {
                 if (instruction.rs2() == null) yield null;
-                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs2(), 0, r.nextLong(MAX_IMM_I));
-                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, r.nextLong(MAX_IMM_I));
+                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs2(), 0, randomImmediate(MAX_IMM_I));
+                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, randomImmediate(MAX_IMM_I));
                 yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
             }
             case MEM_ADDR -> {
                 if (instruction.rs1() == null) yield null;
-                long address = r.nextLong(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, r.nextLong(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, r.nextLong(MAX_IMM_I));
+                long address = randomImmediate(MAX_IMM_I);
+                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
+                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
                 RISCVInstruction instr_addr = RISCVInstruction.ADDI(instruction.rs1(), 0, address);
                 RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs1(), 31, 0);
                 RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs1(), 30, 0);
@@ -314,9 +319,9 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             }
             case MEM_W_DATA -> {
                 if (instruction.rs2() == null) yield null;
-                long address = r.nextLong(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, r.nextLong(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, r.nextLong(MAX_IMM_I));
+                long address = randomImmediate(MAX_IMM_I);
+                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
+                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
                 RISCVInstruction instr_addr = RISCVInstruction.ADDI(instruction.rs2(), 0, address);
                 RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs2(), 31, 0);
                 RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs2(), 30, 0);
@@ -330,9 +335,9 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             }
             case MEM_R_DATA -> {
                 if (instruction.imm() == null || instruction.rs1() == null) yield null;
-                long address = r.nextLong(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, r.nextLong(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, r.nextLong(MAX_IMM_I));
+                long address = randomImmediate(MAX_IMM_I);
+                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
+                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
                 RISCVInstruction instr_addr_1 = RISCVInstruction.ADDI(instruction.rs1(), 0, address);
                 RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs1(), 31, 0);
                 RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs1(), 30, 0);
@@ -480,17 +485,36 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                     RISCVInstruction.RTYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS));
             case ITYPE -> {
                 if (type == RISCV_TYPE.JALR) {
-                    yield RISCVInstruction.ITYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), r.nextLong(MAX_IMM_I) / 4 * 4);
+                    yield RISCVInstruction.ITYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), randomImmediate(MAX_IMM_I) / 4 * 4);
                 }
-                yield RISCVInstruction.ITYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), r.nextLong(MAX_IMM_I));
+                yield RISCVInstruction.ITYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), randomImmediate(MAX_IMM_I));
             }
             case STYPE ->
-                    RISCVInstruction.STYPE(type, r.nextInt(NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), r.nextLong(MAX_IMM_I));
+                    RISCVInstruction.STYPE(type, r.nextInt(NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), randomImmediate(MAX_IMM_I));
             case BTYPE ->
-                    RISCVInstruction.BTYPE(type, r.nextInt(NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), (r.nextLong(MAX_IMM_B) / 4 * 4));
+                    RISCVInstruction.BTYPE(type, r.nextInt(NUMBER_REGISTERS), r.nextInt(NUMBER_REGISTERS), (randomImmediate(MAX_IMM_B) / 4 * 4));
             case UTYPE ->
                     RISCVInstruction.UTYPE(type, r.nextInt(1, NUMBER_REGISTERS), r.nextLong(MAX_IMM_I - 1, MAX_IMM_U));
-            case JTYPE -> RISCVInstruction.JTYPE(type, r.nextInt(1, NUMBER_REGISTERS), (r.nextLong(MAX_IMM_J) / 4 * 4));
+            case JTYPE -> RISCVInstruction.JTYPE(type, r.nextInt(1, NUMBER_REGISTERS), (randomImmediate(MAX_IMM_J) / 4 * 4));
         };
+    }
+    
+    private long randomImmediate(long bound) {
+        if (!bitDist) {
+            if (bound <= 0) return 0;
+            return r.nextLong(bound);
+        }
+        if (bound <= 1) return 0;
+
+        int maxBits = 64 - Long.numberOfLeadingZeros(bound - 1);
+        int bits = r.nextInt(maxBits) + 1;
+
+        long subBound = 1L << bits;
+
+        if (subBound > bound || subBound < 0) {
+            subBound = bound;
+        }
+
+        return r.nextLong(subBound);
     }
 }
