@@ -2,6 +2,7 @@ services:
   yosys:
     container_name: yosys
     build: .
+    user: "0:0"
     # image: gdnmhr/contractgen:latest
     volumes:
       - .:/home/yosys/resources

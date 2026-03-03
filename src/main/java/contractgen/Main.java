@@ -100,10 +100,13 @@ class Synthesize implements Callable<Integer> {
 
     @Option(names = {"--verilator"}, description = "Use Verilator for simulation. Applies to IBEX.")
     boolean useVerilator = false;
+    
+    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    int reps = 1;
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
@@ -494,4 +497,3 @@ class Falsify implements Callable<Integer> {
         return 0;
     }
 }
-

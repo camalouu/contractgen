@@ -58,18 +58,21 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
     private final List<RISCV_OBSERVATION_TYPE> allowed_observations;
 
     private final boolean allow_misaligned_memory;
+    
+    private final int reps;
 
     /**
      * @param subsets     the allowed ISA subsets.
      * @param seed        the random seed.
      * @param repetitions the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList(); //.filter(t -> !t.equals(RISCV_TYPE.SB) && !t.equals(RISCV_TYPE.SH) && !t.equals(RISCV_TYPE.SW)).toList();
         this.allowed_observations = Arrays.stream(RISCV_OBSERVATION_TYPE.values()).toList();
         this.allow_misaligned_memory = allow_misaligned_memory;
+        this.reps = reps;
     }
 
     /**
@@ -78,12 +81,13 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @param seed                 the random seed.
      * @param repetitions          the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory, int reps) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
         this.allowed_observations = allowed_observations.stream().toList();
         this.allow_misaligned_memory = allow_misaligned_memory;
+        this.reps = reps;
     }
 
     /**
@@ -161,29 +165,66 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         List<TestCase> cases = new ArrayList<>();
         for (RISCV_TYPE type : types) {
             Map<Integer, Integer> registers = randomRegisters();
-            List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
-            if (!allow_misaligned_memory) {
-                suffix = alignMemoryAddresses(suffix);
-            }
             RISCVInstruction instruction = randomInstructionFromType(type);
+            
+            List<RISCVInstruction> reset = new ArrayList<>();
+            if (reps > 1) {
+                for (int i = 1; i < NUMBER_REGISTERS; i++) {
+                    if (registers.containsKey(i) && registers.get(i) != null) {
+                        reset.add(RISCVInstruction.ADDI(i, 0, registers.get(i)));
+                    } else {
+                        reset.add(RISCVInstruction.ADDI(i, 0, 0));
+                    }
+                }
+            }
+            
             for (RISCV_OBSERVATION_TYPE observation : allowed_observations) {
-                Pair<List<RISCVInstruction>, List<RISCVInstruction>> prefix = alterObservation(observation, instruction);
-                if (prefix != null) {
+                List<RISCVInstruction> p1 = new ArrayList<>();
+                List<RISCVInstruction> p2 = new ArrayList<>();
+                boolean valid = true;
+                
+                for (int i = 0; i < reps; i++) {
+                    List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
+                    
+                    if (!allow_misaligned_memory) {
+                        suffix = alignMemoryAddresses(suffix);
+                    }
+                    
+                    Pair<List<RISCVInstruction>, List<RISCVInstruction>> prefix = alterObservation(observation, instruction);
+                    if (prefix == null) {
+                        valid = false;
+                        break;
+                    }
+                    
+                    if (!allow_misaligned_memory) {
+                        prefix = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
+                            alignMemoryAddresses(prefix.left()),
+                            alignMemoryAddresses(prefix.right()));                
+                    }
+
                     // ensure jalr are always aligned
                     if (type == RISCV_TYPE.JALR) {
                         prefix = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
                             insertAtSecondToLast(prefix.left(), RISCVInstruction.ANDI(prefix.left().get(prefix.left().size() - 1).rs1(), prefix.left().get(prefix.left().size() - 1).rs1(), MAX_IMM_I - 4)), 
                             insertAtSecondToLast(prefix.right(), RISCVInstruction.ANDI(prefix.right().get(prefix.right().size() - 1).rs1(), prefix.right().get(prefix.right().size() - 1).rs1(), MAX_IMM_I - 4)));
                     }
-                    if (!allow_misaligned_memory) {
-                        prefix = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
-                            alignMemoryAddresses(prefix.left()),
-                            alignMemoryAddresses(prefix.right()));                
+
+                    if (i > 0) {
+                        p1.addAll(reset);
+                        p2.addAll(reset);
                     }
+                    
+                    p1.addAll(prefix.left());
+                    p1.addAll(suffix);
+                    p2.addAll(prefix.right());
+                    p2.addAll(suffix);
+                }
+                
+                if (valid) {
                     cases.add(new RISCVTestCase(
-                            new RISCVProgram(registers, Stream.concat(prefix.left().stream(), suffix.stream()).toList()),
-                            new RISCVProgram(registers, Stream.concat(prefix.right().stream(), suffix.stream()).toList()),
-                            Integer.max(prefix.left().size() + suffix.size(), prefix.right().size() + suffix.size()), new RISCVTestResult(Set.of(new RISCVObservation(type, observation)), Set.of(), true, index), index++));
+                            new RISCVProgram(registers, p1),
+                            new RISCVProgram(registers, p2),
+                            Integer.max(p1.size(), p2.size()), new RISCVTestResult(Set.of(new RISCVObservation(type, observation)), Set.of(), true, index), index++));
                 }
             }
         }
