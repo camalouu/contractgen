@@ -8,14 +8,14 @@ import java.util.Set;
 /**
  * Random set of test cases for RISC-V
  */
-public class RISCVRandomTests extends TestCases {
+// public class RISCVRandomTests extends TestCases {
 
-    /**
-     * @param subsets       The subsets of the RISC-V ISA that should be considered.
-     * @param seed          A seed for the pseudo-random generation.
-     * @param repetitions   The number of test cases per possible observation that should be generated.
-     */
-    public RISCVRandomTests(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
-        super(new RISCVTestGenerator(subsets, seed, repetitions, allow_misaligned_memory, reps, bitDist, randomPrefix).generate());
-    }
-}
+//     /**
+//      * @param subsets       The subsets of the RISC-V ISA that should be considered.
+//      * @param seed          A seed for the pseudo-random generation.
+//      * @param repetitions   The number of test cases per possible observation that should be generated.
+//      */
+//     public RISCVRandomTests(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean resetSequence) {
+//         super(new RISCVTestGenerator(subsets, seed, repetitions, allow_misaligned_memory, reps, bitDist, randomPrefix, resetSequence).generate());
+//     }
+// }

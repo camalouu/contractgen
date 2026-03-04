@@ -19,13 +19,13 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      * @return A list of testcase iterators.
      */
-    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
+    private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean randomSuffix, boolean resetSequence) {
         List<Iterator<TestCase>> iterators = new ArrayList<>(THREADS);
         Random r = new Random(seed);
         int startIndex = 0;
         for (int i = 0; i < THREADS; i++) {
             int perThreadCount = count / THREADS + (count % THREADS > i ? 1 : 0);
-            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), perThreadCount, startIndex, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix));
+            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), perThreadCount, startIndex, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix, randomSuffix, resetSequence));
             startIndex += perThreadCount;
         }
         return iterators;
@@ -39,7 +39,7 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      */
     public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean allow_misaligned_memory) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false, allow_misaligned_memory, 1, false, false), count);
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, false, allow_misaligned_memory, 1, false, false, true, true), count);
     }
 
     /**
@@ -50,10 +50,22 @@ public class RISCVIterativeTests extends TestCases {
      * @param count                the total number of testcases to be generated.
      */
     public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, 1, false, false), count);
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, 1, false, false, true, true), count);
     }
     
     public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
-        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix), count);
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix, true, true), count);
+    }
+
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean randomSuffix) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix, randomSuffix, true), count);
+    }
+
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean randomSuffix, boolean resetSequence) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix, randomSuffix, resetSequence), count);
+    }
+
+    public RISCVIterativeTests(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, boolean randomSuffix) {
+        super(createIterators(subsets, allowed_observations, seed, THREADS, count, isSP, allow_misaligned_memory, 1, false, false, randomSuffix, true), count);
     }
 }

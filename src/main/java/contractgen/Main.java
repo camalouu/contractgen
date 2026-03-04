@@ -103,7 +103,13 @@ class Synthesize implements Callable<Integer> {
 
     @Option(names = {"--verilator"}, description = "Use Verilator for simulation. Applies to IBEX.")
     boolean useVerilator = false;
-    
+
+    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    boolean randomSuffix = false;
+
+    @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
+    boolean resetSequence = false;
+
     @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
     int reps = 1;
     
@@ -115,7 +121,7 @@ class Synthesize implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix, randomSuffix, resetSequence);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
@@ -200,6 +206,8 @@ class Synthesize implements Callable<Integer> {
                 sb.append("\tRepeats: ").append(reps).append("\n");
                 sb.append("\tBit-Dist: ").append(bitDist).append("\n");
                 sb.append("\tRandom-Prefix: ").append(randomPrefix).append("\n");
+                sb.append("\tRandom-Suffix: ").append(randomSuffix).append("\n");
+                sb.append("\tReset-Sequence: ").append(resetSequence).append("\n");
                 sb.append("\tSeed: ").append(seed).append("\n");
                 sb.append("\n");
                 sb.append(contract.toString());
@@ -562,10 +570,16 @@ class ExportTests implements Callable<Integer> {
     @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
+    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    boolean randomSuffix = false;
+
+    @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
+    boolean resetSequence = false;
+
     @Override
     public Integer call() {
         try {
-            TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix);
+            TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix, randomSuffix, resetSequence);
             List<TestCase> tests = RISCVTestCaseIO.collect(tc::getIterator, threads);
 
             TestCases replay = new RISCVListTestCases(tests, threads);
@@ -613,12 +627,15 @@ class CompactTests implements Callable<Integer> {
     @Option(names = {"--group-size"}, description = "Maximum repetitions per compacted testcase for one atom group", defaultValue = "2147483647")
     int groupSize;
 
+    @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions inside a compacted testcase", defaultValue = "true")
+    boolean resetSequence = true;
+
     @Override
     public Integer call() {
         try {
             List<TestCase> tests = RISCVTestCaseIO.read(in.toPath());
             Map<String, Integer> groups = RISCVTestCaseIO.compactGroupSizes(tests);
-            List<TestCase> compacted = RISCVTestCaseIO.compact(tests, groupSize);
+            List<TestCase> compacted = RISCVTestCaseIO.compact(tests, groupSize, resetSequence);
             RISCVTestCaseIO.write(out.toPath(), compacted);
             if (stats != null) {
                 StringBuilder sb = new StringBuilder();

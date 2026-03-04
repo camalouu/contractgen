@@ -68,10 +68,14 @@ public final class RISCVTestCaseIO {
     }
 
     public static List<TestCase> compact(List<TestCase> tests) {
-        return compact(tests, Integer.MAX_VALUE);
+        return compact(tests, Integer.MAX_VALUE, true);
     }
 
     public static List<TestCase> compact(List<TestCase> tests, int maxGroupSize) {
+        return compact(tests, maxGroupSize, true);
+    }
+
+    public static List<TestCase> compact(List<TestCase> tests, int maxGroupSize, boolean useResetSequence) {
         if (maxGroupSize < 1) {
             throw new IllegalArgumentException("maxGroupSize must be >= 1");
         }
@@ -105,7 +109,7 @@ public final class RISCVTestCaseIO {
                     TestCase tc = chunk.get(repetition);
                     RISCVProgram rp1 = (RISCVProgram) tc.getProgram1();
                     RISCVProgram rp2 = (RISCVProgram) tc.getProgram2();
-                    if (repetition > 0) {
+                    if (useResetSequence && repetition > 0) {
                         p1.addAll(resetInstructions(rp1.getRegisters()));
                         p2.addAll(resetInstructions(rp2.getRegisters()));
                     }

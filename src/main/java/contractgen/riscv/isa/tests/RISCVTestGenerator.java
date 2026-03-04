@@ -65,13 +65,17 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
     
     private final boolean randomPrefix;
     
+    private final boolean randomSuffix;
+    
+    private final boolean resetSequence;
+    
 
     /**
      * @param subsets     the allowed ISA subsets.
      * @param seed        the random seed.
      * @param repetitions the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean randomSuffix, boolean resetSequence) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList(); //.filter(t -> !t.equals(RISCV_TYPE.SB) && !t.equals(RISCV_TYPE.SH) && !t.equals(RISCV_TYPE.SW)).toList();
@@ -80,6 +84,8 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         this.reps = reps;
         this.bitDist = bitDist;
         this.randomPrefix = randomPrefix;
+        this.randomSuffix = randomSuffix;
+        this.resetSequence = resetSequence;
     }
 
     /**
@@ -88,7 +94,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @param seed                 the random seed.
      * @param repetitions          the number of repetitions to be generated.
      */
-    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
+    RISCVTestGenerator(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int repetitions, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix, boolean randomSuffix, boolean resetSequence) {
         r = new Random(seed);
         this.repetitions = repetitions;
         this.types = Arrays.stream(RISCV_TYPE.values()).filter(t -> subsets.contains(t.getSubset())).toList();
@@ -97,6 +103,8 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         this.reps = reps;
         this.bitDist = bitDist;
         this.randomPrefix = randomPrefix;
+        this.randomSuffix = randomSuffix;
+        this.resetSequence = resetSequence;
     }
 
     /**
@@ -193,7 +201,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 boolean valid = true;
                 
                 for (int i = 0; i < reps; i++) {
-                    List<RISCVInstruction> suffix = randomSequence(r.nextInt(5, 25));
+                    List<RISCVInstruction> suffix = randomSuffix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     
                     if (!allow_misaligned_memory) {
@@ -220,7 +228,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                             insertAtSecondToLast(targetInstruction.right(), RISCVInstruction.ANDI(targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), MAX_IMM_I - 4)));
                     }
 
-                    if (i > 0) {
+                    if (resetSequence && i > 0) {
                         p1.addAll(reset);
                         p2.addAll(reset);
                     }
