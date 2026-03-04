@@ -36,6 +36,14 @@ public class RISCVProgram implements Program {
         this.program = program;
     }
 
+    public Map<Integer, Integer> getRegisters() {
+        return registers;
+    }
+
+    public List<RISCVInstruction> getProgram() {
+        return program;
+    }
+
     @Override
     public String printSymbolic() {
         throw new UnsupportedOperationException("Not implemented");

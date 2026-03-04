@@ -22,8 +22,11 @@ public class RISCVIterativeTests extends TestCases {
     private static List<Iterator<TestCase>> createIterators(Set<RISCV_SUBSET> subsets, Set<RISCV_OBSERVATION_TYPE> allowed_observations, long seed, int THREADS, int count, boolean isSP, boolean allow_misaligned_memory, int reps, boolean bitDist, boolean randomPrefix) {
         List<Iterator<TestCase>> iterators = new ArrayList<>(THREADS);
         Random r = new Random(seed);
+        int startIndex = 0;
         for (int i = 0; i < THREADS; i++) {
-            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), count / THREADS + (count % THREADS > i ? 1 : 0), isSP, allow_misaligned_memory, reps, bitDist, randomPrefix));
+            int perThreadCount = count / THREADS + (count % THREADS > i ? 1 : 0);
+            iterators.add(new RISCVTestIterator(subsets, allowed_observations, r.nextLong(), perThreadCount, startIndex, isSP, allow_misaligned_memory, reps, bitDist, randomPrefix));
+            startIndex += perThreadCount;
         }
         return iterators;
     }
