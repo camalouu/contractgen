@@ -201,7 +201,10 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 boolean valid = true;
                 
                 for (int i = 0; i < reps; i++) {
-                    List<RISCVInstruction> suffix = randomSuffix ? randomSequence(r.nextInt(5, 25)) : List.of();
+                    List<RISCVInstruction> suffix = 
+                            randomSuffix ? randomSequence(r.nextInt(5, 25))
+                            : List.of(RISCVInstruction.NOP());
+                            
                     List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     
                     if (!allow_misaligned_memory) {

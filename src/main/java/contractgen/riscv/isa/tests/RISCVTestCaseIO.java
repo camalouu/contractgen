@@ -152,9 +152,9 @@ public final class RISCVTestCaseIO {
 
     private static List<RISCVInstruction> resetInstructions(Map<Integer, Integer> registers) {
         List<RISCVInstruction> reset = new ArrayList<>(31);
-        for (int i = 1; i < 32; i++) {
-            Integer value = registers.get(i);
-            reset.add(RISCVInstruction.ADDI(i, 0, value == null ? 0 : value));
+        for (int reg = 1; reg < 32; reg++) {
+            Integer value = registers == null ? null : registers.get(reg);
+            reset.add(RISCVInstruction.ADDI(reg, 0, value == null ? 0 : value));
         }
         return reset;
     }
