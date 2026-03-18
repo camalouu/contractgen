@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class CONFIG {
     public enum CONTRACT_SOURCE {NEW, EXISTING, PREDEFINED}
 
-    public enum PROCESSOR {IBEX, IBEX_CACHE, IBEX_SMALL, CVA6, SODOR_2, SODOR_5, DARKRISCV_2, DARKRISCV_3}
+    public enum PROCESSOR {IBEX, IBEX_CACHE, IBEX_SMALL, CVA6, SODOR_2, SODOR_5, DARKRISCV_2, DARKRISCV_3, HAZARD3}
 
     public final String NAME;
     public final PROCESSOR CORE;
@@ -63,6 +63,7 @@ public class CONFIG {
             case SODOR_5 -> "sodor_5";
             case DARKRISCV_2 -> "darkriscv_2";
             case DARKRISCV_3 -> "darkriscv_3";
+            case HAZARD3 -> "hazard3";
         }) + "/";
     }
 
@@ -185,6 +186,56 @@ public class CONFIG {
         return new CONFIG(
                 "cva6_large",
                 PROCESSOR.CVA6,
+                Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M),
+                Arrays.stream(RISCV_OBSERVATION_TYPE.values()).collect(Collectors.toSet()),
+                126,
+                true,
+                CONTRACT_SOURCE.NEW,
+                100000,
+                123456789,
+                "",
+                false,
+                null,
+                CONTRACT_SOURCE.NEW,
+                2000000,
+                987654321,
+                "",
+                false
+        );
+    }
+
+    /**
+     * @return The hazard3_small config.
+     */
+    public static CONFIG hazard3_small() {
+        return new CONFIG(
+                "hazard3_small",
+                PROCESSOR.HAZARD3,
+                Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M),
+                Arrays.stream(RISCV_OBSERVATION_TYPE.values()).collect(Collectors.toSet()),
+                126,
+                true,
+                CONTRACT_SOURCE.NEW,
+                20000,
+                123456789,
+                "",
+                false,
+                null,
+                CONTRACT_SOURCE.NEW,
+                100000,
+                987654321,
+                "",
+                false
+        );
+    }
+
+    /**
+     * @return The hazard3_large config.
+     */
+    public static CONFIG hazard3_large() {
+        return new CONFIG(
+                "hazard3_large",
+                PROCESSOR.HAZARD3,
                 Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M),
                 Arrays.stream(RISCV_OBSERVATION_TYPE.values()).collect(Collectors.toSet()),
                 126,

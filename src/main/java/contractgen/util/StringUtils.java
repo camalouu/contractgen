@@ -63,8 +63,10 @@ public class StringUtils {
      * @param binaryStr The value encoded in binary.
      * @return The unsigned value as Long
      */
-    public static Long fromBinary(String binaryStr1) {
-        return Long.parseUnsignedLong(binaryStr1, 2);
+    public static long fromBinary(String binary) {
+        if (binary == null) return 0;
+        binary = binary.replace('x', '0').replace('z', '0').replace('X', '0').replace('Z', '0');
+        return Long.parseUnsignedLong(binary, 2);
     }
 
     /**

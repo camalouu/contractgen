@@ -133,6 +133,7 @@ class Synthesize implements Callable<Integer> {
                 case SODOR_5 -> new SODOR_5(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                 case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                 case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
+                case HAZARD3 -> new contractgen.riscv.hazard3.HAZARD3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
             },
             threads, false, null, skipILP);
 
@@ -330,6 +331,7 @@ class Analyze implements Callable<Integer> {
                 case SODOR_5 -> new Sodor5Extractor(RISCV_OBSERVATION_TYPE.getGroups(template));
                 case DARKRISCV_2 -> new DarkRISCVExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
                 case DARKRISCV_3 -> new DarkRISCVExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
+                case HAZARD3 -> throw new RuntimeException("HAZARD3 not supported.");
             };
         TestResult res = extractor.extractResults(bmc_file.getPath(), true, 0);
         RISCVContract ctr = new RISCVContract(res.getDistinguishingObservations().stream().collect(Collectors.toSet()), List.of(res), new ILPUpdater());
@@ -517,6 +519,7 @@ class Falsify implements Callable<Integer> {
                     case SODOR_5 -> new SODOR_5(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                     case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                     case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
+                    case HAZARD3 -> new contractgen.riscv.hazard3.HAZARD3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                 }, 
                 threads, 
                 ctr, 
@@ -593,6 +596,7 @@ class ExportTests implements Callable<Integer> {
                         case SODOR_5 -> new SODOR_5(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                         case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                         case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
+                        case HAZARD3 -> new contractgen.riscv.hazard3.HAZARD3(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                     },
                     threads, false, null, true);
             Contract replayResults = generator.generate();
@@ -701,6 +705,7 @@ class ReplaySynthesize implements Callable<Integer> {
                     case SODOR_5 -> new SODOR_5(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                     case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                     case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
+                    case HAZARD3 -> new contractgen.riscv.hazard3.HAZARD3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                 },
                 threads, false, null, skipILP);
 

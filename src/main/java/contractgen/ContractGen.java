@@ -4,6 +4,7 @@ import contractgen.generator.iverilog.ParallelIverilogGenerator;
 import contractgen.riscv.cva6.CVA6;
 import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
+import contractgen.riscv.hazard3.HAZARD3;
 import contractgen.riscv.ibex.IBEX;
 import contractgen.riscv.isa.contract.RISCVContract;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
@@ -43,6 +44,8 @@ public class ContractGen {
         full_eval_cfg(CONFIG.ibex_large());
         full_eval_cfg(CONFIG.cva6_small());
         full_eval_cfg(CONFIG.cva6_large());
+        full_eval_cfg(CONFIG.hazard3_small());
+        full_eval_cfg(CONFIG.hazard3_large());
     }
 
     private static void full_eval_cfg(CONFIG cfg) throws IOException {
@@ -102,6 +105,7 @@ public class ContractGen {
                         case SODOR_5 -> new SODOR_5(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
+                        case HAZARD3 -> new HAZARD3(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, true);
                     },
                     cfg.THREADS, 
                     cfg.DEBUG, 
@@ -134,6 +138,7 @@ public class ContractGen {
                         case SODOR_5 -> new SODOR_5(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
                         case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
+                        case HAZARD3 -> new HAZARD3(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, true);
                     },
                     cfg.THREADS, 
                     cfg.DEBUG, 

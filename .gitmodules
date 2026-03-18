@@ -7,3 +7,6 @@
 [submodule "src/main/resources/cva6/cva6"]
 	path = src/main/resources/cva6/cva6
 	url = https://github.com/openhwgroup/cva6
+[submodule "src/main/resources/hazard3/core"]
+	path = src/main/resources/hazard3/core
+	url = https://github.com/Wren6991/Hazard3.git
