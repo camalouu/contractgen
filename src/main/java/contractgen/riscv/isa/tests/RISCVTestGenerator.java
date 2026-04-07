@@ -203,7 +203,13 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 for (int i = 0; i < reps; i++) {
                     List<RISCVInstruction> suffix = 
                             randomSuffix ? randomSequence(r.nextInt(5, 25))
-                            : List.of(RISCVInstruction.NOP());
+                            : List.of(
+                                    RISCVInstruction.NOP(),
+                                    RISCVInstruction.NOP(),
+                                    RISCVInstruction.NOP(),
+                                    RISCVInstruction.NOP(),
+                                    RISCVInstruction.NOP()
+                                    );
                             
                     List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     
