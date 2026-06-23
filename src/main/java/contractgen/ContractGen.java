@@ -6,6 +6,7 @@ import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
 import contractgen.riscv.hazard3.HAZARD3;
 import contractgen.riscv.ibex.IBEX;
+import contractgen.riscv.ibex.IBEXTest;
 import contractgen.riscv.isa.contract.RISCVContract;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
 
@@ -98,6 +99,7 @@ public class ContractGen {
                 new ParallelIverilogGenerator(
                     switch (cfg.CORE) {
                         case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
+                        case IBEX_TEST -> new IBEXTest(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false);
                         case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case CVA6 -> new CVA6(new ILPUpdater(), training_tc, cfg.allowed_observations, cfg.subsets, false, false);
@@ -131,6 +133,7 @@ public class ContractGen {
                 new ParallelIverilogGenerator(
                     switch (cfg.CORE) {
                         case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
+                        case IBEX_TEST -> new IBEXTest(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false);
                         case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);
                         case CVA6 -> new CVA6(new ILPUpdater(), eval_tc, cfg.allowed_observations, cfg.subsets, false, false);

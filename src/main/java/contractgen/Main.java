@@ -6,6 +6,7 @@ import contractgen.riscv.cva6.CVA6;
 import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
 import contractgen.riscv.ibex.IBEX;
+import contractgen.riscv.ibex.IBEXTest;
 import contractgen.riscv.isa.RISCV_SUBSET;
 import contractgen.riscv.isa.RISCV_TYPE;
 import contractgen.riscv.isa.contract.RISCVContract;
@@ -126,6 +127,7 @@ class Synthesize implements Callable<Integer> {
         ParallelIverilogGenerator(
             switch (processor) {
                 case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
+                case IBEX_TEST -> new IBEXTest(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                 case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                 case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                 case CVA6 -> new CVA6(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
@@ -324,6 +326,7 @@ class Analyze implements Callable<Integer> {
         Extractor extractor = 
             switch (processor) {
                 case IBEX -> new BMCExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
+                case IBEX_TEST -> new BMCExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
                 case IBEX_SMALL -> new BMCExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
                 case IBEX_CACHE -> new BMCExtractor(RISCV_OBSERVATION_TYPE.getGroups(template));
                 case CVA6 -> throw new RuntimeException("CVA6 not supported.");
@@ -512,6 +515,7 @@ class Falsify implements Callable<Integer> {
             new Falsifier(
                 switch (processor) {
                     case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
+                    case IBEX_TEST -> new IBEXTest(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
                     case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                     case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                     case CVA6 -> new CVA6(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
@@ -589,6 +593,7 @@ class ExportTests implements Callable<Integer> {
             Generator generator = new ParallelIverilogGenerator(
                     switch (processor) {
                         case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
+                        case IBEX_TEST -> new IBEXTest(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                         case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                         case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                         case CVA6 -> new CVA6(new ILPUpdater(), replay, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
@@ -698,6 +703,7 @@ class ReplaySynthesize implements Callable<Integer> {
         Generator generator = new ParallelIverilogGenerator(
                 switch (processor) {
                     case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
+                    case IBEX_TEST -> new IBEXTest(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false);
                     case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                     case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
                     case CVA6 -> new CVA6(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, false, useVerilator);
