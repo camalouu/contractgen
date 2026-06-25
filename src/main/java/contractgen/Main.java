@@ -45,9 +45,10 @@ import java.util.Map;
 import java.util.Set;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, CompareSpikeRvfiAtoms.class, CompareContracts.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
+@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareContracts.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -804,7 +805,256 @@ class ReplaySynthesize implements Callable<Integer> {
     }
 }
 
-@Command(name = "compare_spike_rvfi_atoms", description = "Compare adapted Spike atom extraction against the current IBEX_TEST RVFI extractor.")
+@Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and IBEX_TEST for attacker distinguishability.")
+class ReplaySynthesizeSpike implements Callable<Integer> {
+    private static final int SPIKE_INTERNAL_CHUNK_SIZE = 1000;
+    private static final int MAX_FAILURE_INDICES = 10;
+
+    @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_SUBSET> isa;
+
+    @Option(names = {"-c", "--contract"}, required = true, description = "The contract template to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP> template;
+
+    @Option(names = {"-t"}, required = true, description = "Number of threads")
+    int threads;
+
+    @Option(names = {"-e", "--testcases"}, required = true, description = "Input testcase JSON")
+    File testcases;
+
+    @Option(names = {"-o", "--output"}, required = true, description = "Output path (JSON)")
+    File out;
+
+    @Option(names = {"--txt"}, description = "Output path for txt-summary")
+    File txt;
+
+    @Option(names = {"--instruction"}, description = "Always leak the instruction and the PC.")
+    boolean leakInstruction = false;
+
+    @Option(names = {"--spike-lib"}, description = "Path to libcontract_spike_atom.so. Defaults to CONTRACT_SPIKE_LIB or riscv-isa-sim/build/libcontract_spike_atom.so")
+    File spikeLib;
+
+    @Option(names = {"--spike-isa"}, description = "Spike ISA string", defaultValue = "RV32IM_Zicclsm")
+    String spikeIsa;
+
+    @Override
+    public Integer call() {
+        Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
+        List<TestCase> tests;
+        try {
+            tests = RISCVTestCaseIO.read(testcases.toPath());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        long start = System.currentTimeMillis();
+        Path spikeLibrary = resolveSpikeLibrary();
+        SpikeAtomClient spike = new SpikeAtomClient(spikeLibrary);
+        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal = runSpikeInChunks(spike, tests, allowed);
+
+        List<TestCase> ordinalTests = new ArrayList<>(tests.size());
+        for (int i = 0; i < tests.size(); i++) {
+            TestCase tc = tests.get(i);
+            ordinalTests.add(new RISCVTestCase(tc.getProgram1(), tc.getProgram2(), tc.getMaxInstructionCount(), tc.getLikelyCTX(), i));
+        }
+
+        IBEXTest ibexTest = new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
+        AttackerRun attackerRun = runAttackerLabels(ibexTest, tests.size());
+
+        RISCVContract contract = (RISCVContract) ibexTest.getISA().getContract();
+        List<String> failures = new ArrayList<>();
+        int failureCount = 0;
+        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
+            TestCase tc = tests.get(ordinal);
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            Boolean attackerLabel = attackerRun.labels[ordinal];
+            SIMULATION_RESULT attackerStatus = attackerRun.statuses[ordinal];
+
+            if (spikeCase == null) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": missing Spike result");
+                continue;
+            }
+            if (spikeCase.error() != null) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": Spike error: " + spikeCase.error());
+                continue;
+            }
+            if (attackerLabel == null) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": attacker harness status " + attackerStatus);
+                continue;
+            }
+            if (attackerLabel && spikeCase.atoms().isEmpty()) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": attacker-distinguishable but Spike reported no atoms");
+                continue;
+            }
+
+            contract.add(new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, tc.getIndex()));
+        }
+
+        if (failureCount > 0) {
+            throw new IllegalStateException("Cannot synthesize replay contract. Invalid testcase results: "
+                    + failureCount + " issue(s). First issues: " + String.join("; ", failures));
+        }
+
+        if (leakInstruction) {
+            addInstructionLeaks(contract, tests.size() + 1);
+        }
+        contract.update(true);
+
+        long timeElapsed = System.currentTimeMillis() - start;
+        System.out.println("\nGeneration time: " + timeElapsed);
+        System.out.println(contract);
+        if (txt != null) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                sb.append("Summary:\n");
+                sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
+                sb.append("\tProcessor: IBEX_TEST\n");
+                sb.append("\tAtom Source: Spike\n");
+                sb.append("\tSpike ISA: ").append(spikeIsa).append("\n");
+                sb.append("\tSpike Library: ").append(spikeLibrary).append("\n");
+                sb.append("\tISA: ").append(isa).append("\n");
+                sb.append("\tTemplate: ").append(template).append("\n");
+                sb.append("\tCount: ").append(tests.size()).append("\n");
+                sb.append("\tThreads: ").append(threads).append("\n");
+                sb.append("\tSource: ").append(testcases.getPath()).append("\n");
+                sb.append("\n");
+                sb.append(contract);
+                Files.write(Path.of(txt.getPath()), sb.toString().getBytes());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (FileWriter writer = new FileWriter(out)) {
+            contract.toJSON(writer);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return 0;
+    }
+
+    private AttackerRun runAttackerLabels(IBEXTest ibexTest, int total) {
+        System.out.printf("Running IBEX_TEST attacker labels for %d cases.%n", total);
+        ibexTest.compile();
+        Boolean[] labels = new Boolean[total];
+        SIMULATION_RESULT[] statuses = new SIMULATION_RESULT[total];
+        AtomicInteger progress = new AtomicInteger();
+        List<Thread> runners = new ArrayList<>();
+        for (int id = 1; id <= threads; id++) {
+            int runnerId = id;
+            runners.add(new Thread(() -> ibexTest.getISA().getTestCases().getIterator(runnerId - 1).forEachRemaining(testCase -> {
+                ibexTest.writeTestCase(runnerId, testCase);
+                SIMULATION_RESULT result = ibexTest.simulate(runnerId);
+                statuses[testCase.getIndex()] = result;
+                labels[testCase.getIndex()] = switch (result) {
+                    case FAIL -> true;
+                    case SUCCESS, FALSE_POSITIVE -> false;
+                    case ERROR, TIMEOUT, UNKNOWN -> null;
+                };
+                int done = progress.incrementAndGet();
+                System.out.printf("IBEX_TEST progress: %d of %d.\r", done, total);
+            }), "IBEX_TEST_Replay_Runner_" + id));
+        }
+        runners.forEach(Thread::start);
+        runners.forEach(t -> {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println();
+        return new AttackerRun(labels, statuses);
+    }
+
+    private Map<Integer, SpikeAtomClient.SpikeCaseAtoms> runSpikeInChunks(SpikeAtomClient spike, List<TestCase> tests, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> out = new HashMap<>();
+        for (int start = 0; start < tests.size(); start += SPIKE_INTERNAL_CHUNK_SIZE) {
+            int end = Math.min(start + SPIKE_INTERNAL_CHUNK_SIZE, tests.size());
+            String json = RISCVTestCaseIO.toJSON(tests.subList(start, end));
+            List<SpikeAtomClient.SpikeCaseAtoms> chunk = spike.runAll(json, spikeIsa, allowed);
+            for (SpikeAtomClient.SpikeCaseAtoms result : chunk) {
+                out.put(start + result.ordinal(), new SpikeAtomClient.SpikeCaseAtoms(
+                        start + result.ordinal(),
+                        result.caseIndex(),
+                        result.atoms(),
+                        result.error()
+                ));
+            }
+        }
+        return out;
+    }
+
+    private Path resolveSpikeLibrary() {
+        if (spikeLib != null) {
+            return spikeLib.toPath();
+        }
+        String env = System.getenv("CONTRACT_SPIKE_LIB");
+        if (env != null && !env.isBlank()) {
+            return Path.of(env);
+        }
+        return Path.of("riscv-isa-sim/build/libcontract_spike_atom.so");
+    }
+
+    private void addInstructionLeaks(RISCVContract contract, int startIndex) {
+        int index = startIndex;
+        for (RISCV_TYPE type : RISCV_TYPE.values()) {
+            if (isa.contains(type.getSubset())) {
+                if (Set.of(RISCV_TYPE.BEQ, RISCV_TYPE.BGE, RISCV_TYPE.BLT, RISCV_TYPE.BNE, RISCV_TYPE.BGEU, RISCV_TYPE.BLTU, RISCV_TYPE.JAL, RISCV_TYPE.JALR).contains(type)) {
+                    contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.NEW_PC)), Set.of(), true, index++));
+                }
+                switch (type.getFormat()) {
+                    case RTYPE:
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FORMAT)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.OPCODE)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RD)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FUNCT3)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS1)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS2)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FUNCT7)), Set.of(), true, index++));
+                        break;
+                    case ITYPE:
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FORMAT)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.OPCODE)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RD)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FUNCT3)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS1)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.IMM)), Set.of(), true, index++));
+                        break;
+                    case STYPE, BTYPE:
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FORMAT)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.OPCODE)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FUNCT3)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS1)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS2)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.IMM)), Set.of(), true, index++));
+                        break;
+                    case UTYPE, JTYPE:
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.FORMAT)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.OPCODE)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RD)), Set.of(), true, index++));
+                        contract.add(new RISCVTestResult(Set.of(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.IMM)), Set.of(), true, index++));
+                        break;
+                }
+            }
+        }
+    }
+
+    private void addFailure(List<String> failures, String failure) {
+        if (failures.size() < MAX_FAILURE_INDICES) {
+            failures.add(failure);
+        }
+    }
+
+    private record AttackerRun(Boolean[] labels, SIMULATION_RESULT[] statuses) {
+    }
+}
+
+@Command(name = "compare_spike_rvfi_atoms", description = "Compare adapted Spike atom extraction against the old IBEX RVFI extractor.")
 class CompareSpikeRvfiAtoms implements Callable<Integer> {
     private static final int SPIKE_INTERNAL_CHUNK_SIZE = 1000;
 
@@ -883,7 +1133,7 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
 
         TestCases replay = new RISCVListTestCases(ordinalTests, threads);
         Generator generator = new ParallelIverilogGenerator(
-                new IBEXTest(new ILPUpdater(), replay, allowed, isa, false),
+                new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), replay, allowed, isa, false, true),
                 threads, false, null, true);
 
         Contract rvfiContract;
@@ -933,7 +1183,7 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
         }
 
         AtomComparisonReport report = new AtomComparisonReport(
-                "IBEX_TEST",
+                "IBEX",
                 template.stream().map(Enum::name).sorted().toList(),
                 isa.stream().map(Enum::name).sorted().toList(),
                 spikeIsa,
@@ -1032,6 +1282,153 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
             Set<RISCVObservation> onlySpike,
             Set<RISCVObservation> onlyRvfi,
             String spikeError
+    ) {
+    }
+}
+
+@Command(name = "compare_ibex_test_attacker", description = "Compare attacker distinguishability labels from old IBEX and attacker-only IBEX_TEST.")
+class CompareIbexTestAttacker implements Callable<Integer> {
+    @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_SUBSET> isa;
+
+    @Option(names = {"-t"}, required = true, description = "Number of simulation threads")
+    int threads;
+
+    @Option(names = {"-e", "--testcases"}, required = true, description = "Input testcase JSON")
+    File testcases;
+
+    @Option(names = {"-o", "--output"}, required = true, description = "Output path (JSON)")
+    File out;
+
+    @Override
+    public Integer call() {
+        List<TestCase> tests;
+        try {
+            tests = RISCVTestCaseIO.read(testcases.toPath());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        List<TestCase> ordinalTests = new ArrayList<>(tests.size());
+        for (int i = 0; i < tests.size(); i++) {
+            TestCase tc = tests.get(i);
+            ordinalTests.add(new RISCVTestCase(tc.getProgram1(), tc.getProgram2(), tc.getMaxInstructionCount(), tc.getLikelyCTX(), i));
+        }
+
+        AttackerRun oldRun = runAttackerLabels(
+                new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), Set.of(), isa, false, true),
+                ordinalTests,
+                "IBEX"
+        );
+        AttackerRun newRun = runAttackerLabels(
+                new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), Set.of(), isa, false),
+                ordinalTests,
+                "IBEX_TEST"
+        );
+
+        List<AttackerComparisonCase> cases = new ArrayList<>();
+        int mismatches = 0;
+        int executionIssues = 0;
+        int attackerDistinguishable = 0;
+        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
+            Boolean oldLabel = oldRun.labels[ordinal];
+            Boolean newLabel = newRun.labels[ordinal];
+            SIMULATION_RESULT oldStatus = oldRun.statuses[ordinal];
+            SIMULATION_RESULT newStatus = newRun.statuses[ordinal];
+            boolean executionIssue = oldLabel == null || newLabel == null;
+            boolean mismatch = executionIssue || !oldLabel.equals(newLabel);
+            if (executionIssue) executionIssues++;
+            if (mismatch) mismatches++;
+            if (Boolean.TRUE.equals(newLabel)) attackerDistinguishable++;
+            if (mismatch) {
+                cases.add(new AttackerComparisonCase(
+                        tests.get(ordinal).getIndex(),
+                        oldLabel,
+                        newLabel,
+                        oldStatus,
+                        newStatus
+                ));
+            }
+        }
+
+        AttackerComparisonReport report = new AttackerComparisonReport(
+                testcases.getPath(),
+                isa.stream().map(Enum::name).sorted().toList(),
+                new AttackerComparisonSummary(tests.size(), mismatches, executionIssues, attackerDistinguishable),
+                cases
+        );
+
+        try {
+            Files.writeString(out.toPath(), new GsonBuilder().setPrettyPrinting().create().toJson(report));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.printf(
+                "Compared %d cases. attackerMismatches=%d, executionIssues=%d, attackerDistinguishable=%d. Output: %s%n",
+                tests.size(), mismatches, executionIssues, attackerDistinguishable, out.getPath());
+        return mismatches == 0 ? 0 : 2;
+    }
+
+    private AttackerRun runAttackerLabels(MARCH march, List<TestCase> tests, String name) {
+        System.out.printf("Running %s attacker labels for %d cases.%n", name, tests.size());
+        march.compile();
+        Boolean[] labels = new Boolean[tests.size()];
+        SIMULATION_RESULT[] statuses = new SIMULATION_RESULT[tests.size()];
+        AtomicInteger progress = new AtomicInteger();
+        List<Thread> runners = new ArrayList<>();
+        for (int id = 1; id <= threads; id++) {
+            int runnerId = id;
+            runners.add(new Thread(() -> march.getISA().getTestCases().getIterator(runnerId - 1).forEachRemaining(testCase -> {
+                march.writeTestCase(runnerId, testCase);
+                SIMULATION_RESULT result = march.simulate(runnerId);
+                statuses[testCase.getIndex()] = result;
+                labels[testCase.getIndex()] = switch (result) {
+                    case FAIL -> true;
+                    case SUCCESS, FALSE_POSITIVE -> false;
+                    case ERROR, TIMEOUT, UNKNOWN -> null;
+                };
+                int done = progress.incrementAndGet();
+                System.out.printf("%s progress: %d of %d.\r", name, done, tests.size());
+            }), name + "_Runner_" + id));
+        }
+        runners.forEach(Thread::start);
+        runners.forEach(t -> {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println();
+        return new AttackerRun(labels, statuses);
+    }
+
+    private record AttackerRun(Boolean[] labels, SIMULATION_RESULT[] statuses) {
+    }
+
+    private record AttackerComparisonReport(
+            String testcases,
+            List<String> isa,
+            AttackerComparisonSummary summary,
+            List<AttackerComparisonCase> mismatches
+    ) {
+    }
+
+    private record AttackerComparisonSummary(
+            int total,
+            int attackerMismatches,
+            int executionIssues,
+            int attackerDistinguishable
+    ) {
+    }
+
+    private record AttackerComparisonCase(
+            int index,
+            Boolean oldIbexAttackerDistinguishable,
+            Boolean ibexTestAttackerDistinguishable,
+            SIMULATION_RESULT oldIbexStatus,
+            SIMULATION_RESULT ibexTestStatus
     ) {
     }
 }

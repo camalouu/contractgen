@@ -81,7 +81,7 @@ public class ParallelIverilogGenerator extends Generator {
         if (DEBUG) {
             start = System.currentTimeMillis();
         }
-        if (!skipILP) {
+        if (!skipILP && MARCH.producesContractAtoms()) {
             MARCH.getISA().getContract().update(true);
         }
         if (DEBUG) {
@@ -179,7 +179,7 @@ public class ParallelIverilogGenerator extends Generator {
                             start = System.currentTimeMillis();
                         }
                         TestResult ctx = MARCH.extractCTX(id, testCase);
-                        if (ctx.getDistinguishingObservations().isEmpty()) {
+                        if (MARCH.producesContractAtoms() && ctx.getDistinguishingObservations().isEmpty()) {
                             System.out.println("Warning: No differences found for test case " + testCase + " in thread " + id);
                             System.exit(1);
                         }

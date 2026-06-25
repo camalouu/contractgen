@@ -39,6 +39,13 @@ public abstract class MARCH {
     }
 
     /**
+     * @return Whether this microarchitecture reports contract atoms in its test results.
+     */
+    public boolean producesContractAtoms() {
+        return true;
+    }
+
+    /**
      * Prepares the sources for the bounded model check.
      *
      * @param testCase  The test case to be included in the sources.

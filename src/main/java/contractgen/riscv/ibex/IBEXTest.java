@@ -8,10 +8,9 @@ import contractgen.TestResult;
 import contractgen.Updater;
 import contractgen.riscv.isa.RISCV;
 import contractgen.riscv.isa.RISCV_SUBSET;
+import contractgen.riscv.isa.contract.RISCVTestResult;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
-import contractgen.riscv.isa.extractor.RVFIExtractor;
 import contractgen.util.StringUtils;
-import contractgen.util.vcd.VcdFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,7 +19,6 @@ import java.nio.file.Paths;
 import java.util.Set;
 
 import static contractgen.util.FileUtils.copyFileOrFolder;
-import static contractgen.util.FileUtils.replaceString;
 import static contractgen.util.ScriptUtils.runScript;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
@@ -36,7 +34,12 @@ public class IBEXTest extends MARCH {
     protected String SIMULATION_PATH = "/home/yosys/output/ibex-test/simulation/";
 
     public IBEXTest(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP) {
-        super(new RISCV(allowed_observations, isa, updater, testCases), new RVFIExtractor(allowed_observations, isSP));
+        super(new RISCV(allowed_observations, isa, updater, testCases), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
+    }
+
+    @Override
+    public boolean producesContractAtoms() {
+        return false;
     }
 
     @Override
@@ -70,21 +73,6 @@ public class IBEXTest extends MARCH {
     }
 
     private TestResult extractCTX(String path, TestCase testCase) {
-        VcdFile vcd;
-        try {
-            vcd = new VcdFile(Files.readString(Path.of(path + "sim.vcd")));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        int failTime = vcd.getTop().getChild("atk").getWire("atk_equiv_o").getLastChangeTime();
-        int fetch_1 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_1_count").getValueAt(failTime), 2);
-        int fetch_2 = Integer.parseInt(vcd.getTop().getChild("control").getWire("fetch_2_count").getValueAt(failTime), 2);
-        int retire = Integer.parseInt(vcd.getTop().getChild("control").getWire("retire_count").getValueAt(failTime), 2);
-        int currentGuess = Integer.max(fetch_1, fetch_2);
-        while (currentGuess >= retire && simulateSteps(path, currentGuess) == SIMULATION_RESULT.FAIL) {
-            currentGuess--;
-        }
-        simulateSteps(path, currentGuess + 1);
         return extractDifferences(path, true, testCase.getIndex());
     }
 
@@ -109,10 +97,7 @@ public class IBEXTest extends MARCH {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        synchronized (getISA().getContract()) {
-            replaceString(BASE_PATH + "verif/ctr.sv", "/* CONTRACT */", getISA().getContract().printContract());
-        }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH + " BASE", false, 240);
+        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
         System.out.println(output);
         System.out.println("Compilation finished.");
     }
@@ -182,13 +167,4 @@ public class IBEXTest extends MARCH {
         return SIMULATION_RESULT.UNKNOWN;
     }
 
-    private SIMULATION_RESULT simulateSteps(String path, int steps) {
-        try {
-            String content = StringUtils.toHexEncoding((long) steps) + System.lineSeparator();
-            Files.writeString(Paths.get(path + "count.dat"), content);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return simulate(path);
-    }
 }
