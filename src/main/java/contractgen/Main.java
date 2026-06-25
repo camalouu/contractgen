@@ -39,7 +39,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -837,8 +839,17 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--spike-isa"}, description = "Spike ISA string", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
 
+    @Option(names = {"--negative-signature-threshold"}, description = "Maximum attacker-negative RTL executions for one exact Spike atom signature before skipping remaining cases. Use 0 to disable negative skipping.", defaultValue = "10")
+    int negativeSignatureThreshold = 10;
+
+    @Option(names = {"--use-skipped-evidence"}, description = "Add skipped exact-signature duplicates to the contract as copied evidence.")
+    boolean useSkippedEvidence = false;
+
     @Override
     public Integer call() {
+        if (negativeSignatureThreshold < 0) {
+            throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
+        }
         Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
         List<TestCase> tests;
         try {
@@ -852,6 +863,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         SpikeAtomClient spike = new SpikeAtomClient(spikeLibrary);
         Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal = runSpikeInChunks(spike, tests, allowed);
 
+        List<String> failures = new ArrayList<>();
+        int failureCount = validateSpikeResults(tests, spikeByOrdinal, failures);
+        if (failureCount > 0) {
+            throw new IllegalStateException("Cannot synthesize replay contract. Invalid Spike results: "
+                    + failureCount + " issue(s). First issues: " + String.join("; ", failures));
+        }
+
         List<TestCase> ordinalTests = new ArrayList<>(tests.size());
         for (int i = 0; i < tests.size(); i++) {
             TestCase tc = tests.get(i);
@@ -859,44 +877,21 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         }
 
         IBEXTest ibexTest = new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
-        AttackerRun attackerRun = runAttackerLabels(ibexTest, tests.size());
+        List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal);
+        RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
+        AdaptiveStats adaptiveStats = runAdaptiveAttackerLabels(ibexTest, tests, ordinalTests, spikeByOrdinal, signatureGroups, mergedResults, failures);
 
         RISCVContract contract = (RISCVContract) ibexTest.getISA().getContract();
-        List<String> failures = new ArrayList<>();
-        int failureCount = 0;
-        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
-            TestCase tc = tests.get(ordinal);
-            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
-            Boolean attackerLabel = attackerRun.labels[ordinal];
-            SIMULATION_RESULT attackerStatus = attackerRun.statuses[ordinal];
 
-            if (spikeCase == null) {
-                failureCount++;
-                addFailure(failures, tc.getIndex() + ": missing Spike result");
-                continue;
-            }
-            if (spikeCase.error() != null) {
-                failureCount++;
-                addFailure(failures, tc.getIndex() + ": Spike error: " + spikeCase.error());
-                continue;
-            }
-            if (attackerLabel == null) {
-                failureCount++;
-                addFailure(failures, tc.getIndex() + ": attacker harness status " + attackerStatus);
-                continue;
-            }
-            if (attackerLabel && spikeCase.atoms().isEmpty()) {
-                failureCount++;
-                addFailure(failures, tc.getIndex() + ": attacker-distinguishable but Spike reported no atoms");
-                continue;
-            }
-
-            contract.add(new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, tc.getIndex()));
+        if (adaptiveStats.failureCount.get() > 0) {
+            throw new IllegalStateException("Cannot synthesize replay contract. Invalid testcase results: "
+                    + adaptiveStats.failureCount.get() + " issue(s). First issues: " + String.join("; ", failures));
         }
 
-        if (failureCount > 0) {
-            throw new IllegalStateException("Cannot synthesize replay contract. Invalid testcase results: "
-                    + failureCount + " issue(s). First issues: " + String.join("; ", failures));
+        for (RISCVTestResult result : mergedResults) {
+            if (result != null) {
+                contract.add(result);
+            }
         }
 
         if (leakInstruction) {
@@ -906,6 +901,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
         long timeElapsed = System.currentTimeMillis() - start;
         System.out.println("\nGeneration time: " + timeElapsed);
+        System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, useSkippedEvidence=%s, negativeThreshold=%d%n",
+                signatureGroups.size(),
+                adaptiveStats.executed.get(),
+                adaptiveStats.skippedPositive.get(),
+                adaptiveStats.skippedNegative.get(),
+                useSkippedEvidence,
+                negativeSignatureThreshold);
         System.out.println(contract);
         if (txt != null) {
             try {
@@ -921,6 +923,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tCount: ").append(tests.size()).append("\n");
                 sb.append("\tThreads: ").append(threads).append("\n");
                 sb.append("\tSource: ").append(testcases.getPath()).append("\n");
+                sb.append("\tUnique Signatures: ").append(signatureGroups.size()).append("\n");
+                sb.append("\tRTL Executed: ").append(adaptiveStats.executed.get()).append("\n");
+                sb.append("\tSkipped Positive Signature: ").append(adaptiveStats.skippedPositive.get()).append("\n");
+                sb.append("\tSkipped Negative Threshold: ").append(adaptiveStats.skippedNegative.get()).append("\n");
+                sb.append("\tUse Skipped Evidence: ").append(useSkippedEvidence).append("\n");
+                sb.append("\tNegative Signature Threshold: ").append(negativeSignatureThreshold).append("\n");
                 sb.append("\n");
                 sb.append(contract);
                 Files.write(Path.of(txt.getPath()), sb.toString().getBytes());
@@ -936,27 +944,30 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         return 0;
     }
 
-    private AttackerRun runAttackerLabels(IBEXTest ibexTest, int total) {
-        System.out.printf("Running IBEX_TEST attacker labels for %d cases.%n", total);
+    private AdaptiveStats runAdaptiveAttackerLabels(
+            IBEXTest ibexTest,
+            List<TestCase> tests,
+            List<TestCase> ordinalTests,
+            Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
+            List<SignatureGroup> signatureGroups,
+            RISCVTestResult[] mergedResults,
+            List<String> failures
+    ) {
+        System.out.printf("Running IBEX_TEST adaptive attacker labels for %d cases across %d exact signatures.%n", tests.size(), signatureGroups.size());
         ibexTest.compile();
-        Boolean[] labels = new Boolean[total];
-        SIMULATION_RESULT[] statuses = new SIMULATION_RESULT[total];
-        AtomicInteger progress = new AtomicInteger();
+        AdaptiveStats stats = new AdaptiveStats();
+        AtomicInteger groupCursor = new AtomicInteger();
         List<Thread> runners = new ArrayList<>();
         for (int id = 1; id <= threads; id++) {
             int runnerId = id;
-            runners.add(new Thread(() -> ibexTest.getISA().getTestCases().getIterator(runnerId - 1).forEachRemaining(testCase -> {
-                ibexTest.writeTestCase(runnerId, testCase);
-                SIMULATION_RESULT result = ibexTest.simulate(runnerId);
-                statuses[testCase.getIndex()] = result;
-                labels[testCase.getIndex()] = switch (result) {
-                    case FAIL -> true;
-                    case SUCCESS, FALSE_POSITIVE -> false;
-                    case ERROR, TIMEOUT, UNKNOWN -> null;
-                };
-                int done = progress.incrementAndGet();
-                System.out.printf("IBEX_TEST progress: %d of %d.\r", done, total);
-            }), "IBEX_TEST_Replay_Runner_" + id));
+            runners.add(new Thread(() -> {
+                int groupIndex;
+                while ((groupIndex = groupCursor.getAndIncrement()) < signatureGroups.size()) {
+                    executeSignatureGroup(ibexTest, runnerId, tests, ordinalTests, spikeByOrdinal, signatureGroups.get(groupIndex), mergedResults, stats, failures);
+                    int doneGroups = stats.completedGroups.incrementAndGet();
+                    System.out.printf("IBEX_TEST adaptive progress: %d of %d signatures, %d RTL executions.\r", doneGroups, signatureGroups.size(), stats.executed.get());
+                }
+            }, "IBEX_TEST_Adaptive_Replay_Runner_" + id));
         }
         runners.forEach(Thread::start);
         runners.forEach(t -> {
@@ -968,7 +979,101 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             }
         });
         System.out.println();
-        return new AttackerRun(labels, statuses);
+        return stats;
+    }
+
+    private void executeSignatureGroup(
+            IBEXTest ibexTest,
+            int runnerId,
+            List<TestCase> tests,
+            List<TestCase> ordinalTests,
+            Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
+            SignatureGroup group,
+            RISCVTestResult[] mergedResults,
+            AdaptiveStats stats,
+            List<String> failures
+    ) {
+        boolean positiveSeen = false;
+        int negativeCount = 0;
+        for (int ordinal : group.ordinals()) {
+            TestCase original = tests.get(ordinal);
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            if (positiveSeen) {
+                stats.skippedPositive.incrementAndGet();
+                if (useSkippedEvidence) {
+                    mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), true, original.getIndex());
+                }
+                continue;
+            }
+            if (negativeSignatureThreshold > 0 && negativeCount >= negativeSignatureThreshold) {
+                stats.skippedNegative.incrementAndGet();
+                if (useSkippedEvidence) {
+                    mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), false, original.getIndex());
+                }
+                continue;
+            }
+
+            ibexTest.writeTestCase(runnerId, ordinalTests.get(ordinal));
+            SIMULATION_RESULT simulationResult = ibexTest.simulate(runnerId);
+            Boolean attackerLabel = switch (simulationResult) {
+                case FAIL -> true;
+                case SUCCESS, FALSE_POSITIVE -> false;
+                case ERROR, TIMEOUT, UNKNOWN -> null;
+            };
+            stats.executed.incrementAndGet();
+            if (attackerLabel == null) {
+                addThreadSafeFailure(stats, failures, original.getIndex() + ": attacker harness status " + simulationResult);
+                continue;
+            }
+            if (attackerLabel && spikeCase.atoms().isEmpty()) {
+                addThreadSafeFailure(stats, failures, original.getIndex() + ": attacker-distinguishable but Spike reported no atoms");
+                continue;
+            }
+
+            mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, original.getIndex());
+            if (attackerLabel) {
+                positiveSeen = true;
+            } else {
+                negativeCount++;
+            }
+        }
+    }
+
+    private int validateSpikeResults(List<TestCase> tests, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal, List<String> failures) {
+        int failureCount = 0;
+        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
+            TestCase tc = tests.get(ordinal);
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            if (spikeCase == null) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": missing Spike result");
+            } else if (spikeCase.error() != null) {
+                failureCount++;
+                addFailure(failures, tc.getIndex() + ": Spike error: " + spikeCase.error());
+            }
+        }
+        return failureCount;
+    }
+
+    private List<SignatureGroup> groupBySignature(int total, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal) {
+        Map<AtomSignature, List<Integer>> grouped = new LinkedHashMap<>();
+        for (int ordinal = 0; ordinal < total; ordinal++) {
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            AtomSignature signature = new AtomSignature(spikeCase.atoms());
+            grouped.computeIfAbsent(signature, ignored -> new ArrayList<>()).add(ordinal);
+        }
+        return grouped.entrySet().stream()
+                .map(entry -> new SignatureGroup(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private void addThreadSafeFailure(AdaptiveStats stats, List<String> failures, String failure) {
+        int count = stats.failureCount.incrementAndGet();
+        if (count <= MAX_FAILURE_INDICES) {
+            synchronized (failures) {
+                addFailure(failures, failure);
+            }
+        }
     }
 
     private Map<Integer, SpikeAtomClient.SpikeCaseAtoms> runSpikeInChunks(SpikeAtomClient spike, List<TestCase> tests, Set<RISCV_OBSERVATION_TYPE> allowed) {
@@ -1050,7 +1155,27 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         }
     }
 
-    private record AttackerRun(Boolean[] labels, SIMULATION_RESULT[] statuses) {
+    private record AtomSignature(Set<RISCVObservation> atoms) {
+        private AtomSignature {
+            atoms = Collections.unmodifiableSet(observationSet(atoms));
+        }
+    }
+
+    private record SignatureGroup(AtomSignature signature, List<Integer> ordinals) {
+    }
+
+    private static Set<RISCVObservation> observationSet(Set<RISCVObservation> atoms) {
+        Set<RISCVObservation> out = new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+        out.addAll(atoms);
+        return out;
+    }
+
+    private static final class AdaptiveStats {
+        private final AtomicInteger completedGroups = new AtomicInteger();
+        private final AtomicInteger executed = new AtomicInteger();
+        private final AtomicInteger skippedPositive = new AtomicInteger();
+        private final AtomicInteger skippedNegative = new AtomicInteger();
+        private final AtomicInteger failureCount = new AtomicInteger();
     }
 }
 

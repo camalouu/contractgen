@@ -6,7 +6,7 @@ mvn clean package
 
 platform="IBEX"
 # platform="CVA6"
-count=12000
+count=20000
 reps=1
 suffix="test"
 
@@ -32,7 +32,7 @@ txt_out="/home/yosys/project/${platform,,}-${count}-${reps}rep-${suffix}.txt"
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main export_tests \
 #   -p "$platform" \
 #   -i BASE,M \
-#   -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
+#   -c BASE \
 #   -n "$count" \
 #   -t 8 \
 #   -s 58 \
@@ -44,24 +44,38 @@ txt_out="/home/yosys/project/${platform,,}-${count}-${reps}rep-${suffix}.txt"
   # -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
-# -p "IBEX_TEST" \
+# -p "IBEX" \
 # -i BASE,M \
 # -c BASE \
 # -t 8 \
-# -e "1000-IBEX-testcases.json" \
-# -o "ibex-test-replay-result.json" \
+# -e "20000-IBEX-testcases.json" \
+# -o "ibex-20k-replay-result.json" \
 # --verilator \
 # --txt "${txt_out}-replay-result.txt" \
 
 
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compare_spike_rvfi_atoms \
 -i BASE,M \
--c BASE,ALIGNED,BRANCH \
+-c BASE,ALIGNED,BRANCH,DEPENDENCIES \
 -t 8 \
 -o "spike-rvfi-compare.json" \
--n 10000 \
--s 66
+-e "12000-IBEX-testcases.json" \
+#
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compare_ibex_test_attacker \
+# -i BASE,M \
+# -t 8 \
 # -e "12000-IBEX-testcases.json" \
+# -o "ibex-test-attacker-harness-compare.json" \
+
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_spike \
+# -i BASE,M \
+# -c BASE \
+# -t 8 \
+# -e "20000-IBEX-testcases.json" \
+# -o "adaptive-spike-20k-replay-results-skippedevidence.json" \
+# --txt adaptive-spike-20k-replay-results-skippedevidence.txt \
+# --use-skipped-evidence
+
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compact_tests \
 #     -i "${count}-${platform}-clean-original-set.json" \
