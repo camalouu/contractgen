@@ -45,9 +45,13 @@ public final class RISCVTestCaseIO {
     }
 
     public static void write(Path output, List<TestCase> tests) throws IOException {
+        Files.writeString(output, toJSON(tests));
+    }
+
+    public static String toJSON(List<TestCase> tests) {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         List<SerializedTestCase> serialized = tests.stream().map(RISCVTestCaseIO::serialize).toList();
-        Files.writeString(output, gson.toJson(serialized));
+        return gson.toJson(serialized);
     }
 
     public static List<TestCase> read(Path input) throws IOException {

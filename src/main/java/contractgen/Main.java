@@ -1,5 +1,6 @@
 package contractgen;
 
+import com.google.gson.GsonBuilder;
 import contractgen.generator.iverilog.Falsifier;
 import contractgen.generator.iverilog.ParallelIverilogGenerator;
 import contractgen.riscv.cva6.CVA6;
@@ -7,6 +8,7 @@ import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
 import contractgen.riscv.ibex.IBEX;
 import contractgen.riscv.ibex.IBEXTest;
+import contractgen.riscv.isa.RISCVTestCase;
 import contractgen.riscv.isa.RISCV_SUBSET;
 import contractgen.riscv.isa.RISCV_TYPE;
 import contractgen.riscv.isa.contract.RISCVContract;
@@ -17,6 +19,7 @@ import contractgen.riscv.isa.extractor.BMCExtractor;
 import contractgen.riscv.isa.extractor.DarkRISCVExtractor;
 import contractgen.riscv.isa.extractor.Sodor5Extractor;
 import contractgen.riscv.isa.extractor.SodorExtractor;
+import contractgen.riscv.isa.spike.SpikeAtomClient;
 import contractgen.riscv.isa.tests.RISCVIterativeTests;
 import contractgen.riscv.isa.tests.RISCVListTestCases;
 import contractgen.riscv.isa.tests.RISCVTestCaseIO;
@@ -33,7 +36,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,7 +47,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, CompareContracts.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
+@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, CompareSpikeRvfiAtoms.class, CompareContracts.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -795,6 +801,238 @@ class ReplaySynthesize implements Callable<Integer> {
             throw new RuntimeException(e);
         }
         return 0;
+    }
+}
+
+@Command(name = "compare_spike_rvfi_atoms", description = "Compare adapted Spike atom extraction against the current IBEX_TEST RVFI extractor.")
+class CompareSpikeRvfiAtoms implements Callable<Integer> {
+    private static final int SPIKE_INTERNAL_CHUNK_SIZE = 1000;
+
+    @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_SUBSET> isa;
+
+    @Option(names = {"-c", "--contract"}, required = true, description = "The contract template to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP> template;
+
+    @Option(names = {"-t"}, required = true, description = "Number of threads for the RVFI/RTL run")
+    int threads;
+
+    @Option(names = {"-e", "--testcases"}, description = "Input testcase JSON. If omitted, tests are generated from -n and -s.")
+    File testcases;
+
+    @Option(names = {"-n"}, description = "Number of test cases to generate when --testcases is omitted")
+    int number;
+
+    @Option(names = {"-s"}, description = "Seed for testcase generation when --testcases is omitted")
+    Long seed;
+
+    @Option(names = {"-o", "--output"}, required = true, description = "Output path (JSON)")
+    File out;
+
+    @Option(names = {"--sp"}, description = "Only consider identical programs (same program mode)")
+    boolean isSP = false;
+
+    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    int reps = 1;
+
+    @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
+    boolean bitDist = false;
+
+    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
+    boolean randomPrefix = false;
+
+    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    boolean randomSuffix = false;
+
+    @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
+    boolean resetSequence = false;
+
+    @Option(names = {"--spike-lib"}, description = "Path to libcontract_spike_atom.so. Defaults to CONTRACT_SPIKE_LIB or riscv-isa-sim/build/libcontract_spike_atom.so")
+    File spikeLib;
+
+    @Option(names = {"--spike-isa"}, description = "Spike ISA string", defaultValue = "RV32IM_Zicclsm")
+    String spikeIsa;
+
+    @Override
+    public Integer call() {
+        Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
+        List<TestCase> tests;
+        if (testcases != null) {
+            try {
+                tests = RISCVTestCaseIO.read(testcases.toPath());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            if (number <= 0 || seed == null) {
+                throw new IllegalArgumentException("Either --testcases or both -n and -s must be provided.");
+            }
+            TestCases generated = new RISCVIterativeTests(isa, allowed, seed, threads, number, isSP, true, reps, bitDist, randomPrefix, randomSuffix, resetSequence);
+            tests = RISCVTestCaseIO.collect(generated::getIterator, threads);
+        }
+
+        Path spikeLibrary = resolveSpikeLibrary();
+        SpikeAtomClient spike = new SpikeAtomClient(spikeLibrary);
+        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal = runSpikeInChunks(spike, tests, allowed);
+
+        List<TestCase> ordinalTests = new ArrayList<>(tests.size());
+        for (int i = 0; i < tests.size(); i++) {
+            TestCase tc = tests.get(i);
+            ordinalTests.add(new RISCVTestCase(tc.getProgram1(), tc.getProgram2(), tc.getMaxInstructionCount(), tc.getLikelyCTX(), i));
+        }
+
+        TestCases replay = new RISCVListTestCases(ordinalTests, threads);
+        Generator generator = new ParallelIverilogGenerator(
+                new IBEXTest(new ILPUpdater(), replay, allowed, isa, false),
+                threads, false, null, true);
+
+        Contract rvfiContract;
+        long start = System.currentTimeMillis();
+        try {
+            rvfiContract = generator.generate();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        long elapsed = System.currentTimeMillis() - start;
+
+        Map<Integer, TestResult> rvfiByOrdinal = rvfiContract.getTestResults().stream()
+                .collect(Collectors.toMap(TestResult::getIndex, r -> r, (first, ignored) -> first));
+
+        List<AtomComparisonCase> cases = new ArrayList<>(tests.size());
+        int spikeFailed = 0;
+        int mismatches = 0;
+        int attackerDistinguishable = 0;
+        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
+            TestCase tc = tests.get(ordinal);
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            TestResult rvfi = rvfiByOrdinal.get(ordinal);
+
+            Set<RISCVObservation> spikeAtoms = spikeCase == null ? Set.of() : spikeCase.atoms();
+            Set<RISCVObservation> rvfiAtoms = observations(rvfi, allowed);
+            Set<RISCVObservation> onlySpike = difference(spikeAtoms, rvfiAtoms);
+            Set<RISCVObservation> onlyRvfi = difference(rvfiAtoms, spikeAtoms);
+            String spikeError = spikeCase == null ? "Missing Spike result" : spikeCase.error();
+            boolean missingRvfi = rvfi == null;
+            boolean adversaryDistinguishable = rvfi != null && rvfi.isAdversaryDistinguishable();
+            boolean mismatch = spikeError != null || missingRvfi || !onlySpike.isEmpty() || !onlyRvfi.isEmpty();
+
+            if (spikeError != null) spikeFailed++;
+            if (adversaryDistinguishable) attackerDistinguishable++;
+            if (mismatch) mismatches++;
+
+            cases.add(new AtomComparisonCase(
+                    tc.getIndex(),
+                    mismatch,
+                    adversaryDistinguishable,
+                    spikeAtoms,
+                    rvfiAtoms,
+                    onlySpike,
+                    onlyRvfi,
+                    spikeError
+            ));
+        }
+
+        AtomComparisonReport report = new AtomComparisonReport(
+                "IBEX_TEST",
+                template.stream().map(Enum::name).sorted().toList(),
+                isa.stream().map(Enum::name).sorted().toList(),
+                spikeIsa,
+                spikeLibrary.toString(),
+                new AtomComparisonSummary(tests.size(), spikeFailed, mismatches, attackerDistinguishable, elapsed),
+                cases
+        );
+
+        try {
+            Files.writeString(out.toPath(), new GsonBuilder().setPrettyPrinting().create().toJson(report));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.printf(
+                "Compared %d cases. atomMismatches=%d, spikeFailed=%d, attackerDistinguishable=%d. Output: %s%n",
+                tests.size(), mismatches, spikeFailed, attackerDistinguishable, out.getPath());
+        return mismatches == 0 ? 0 : 2;
+    }
+
+    private Map<Integer, SpikeAtomClient.SpikeCaseAtoms> runSpikeInChunks(SpikeAtomClient spike, List<TestCase> tests, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> out = new HashMap<>();
+        for (int start = 0; start < tests.size(); start += SPIKE_INTERNAL_CHUNK_SIZE) {
+            int end = Math.min(start + SPIKE_INTERNAL_CHUNK_SIZE, tests.size());
+            String json = RISCVTestCaseIO.toJSON(tests.subList(start, end));
+            List<SpikeAtomClient.SpikeCaseAtoms> chunk = spike.runAll(json, spikeIsa, allowed);
+            for (SpikeAtomClient.SpikeCaseAtoms result : chunk) {
+                out.put(start + result.ordinal(), new SpikeAtomClient.SpikeCaseAtoms(
+                        start + result.ordinal(),
+                        result.caseIndex(),
+                        result.atoms(),
+                        result.error()
+                ));
+            }
+        }
+        return out;
+    }
+
+    private Path resolveSpikeLibrary() {
+        if (spikeLib != null) {
+            return spikeLib.toPath();
+        }
+        String env = System.getenv("CONTRACT_SPIKE_LIB");
+        if (env != null && !env.isBlank()) {
+            return Path.of(env);
+        }
+        return Path.of("riscv-isa-sim/build/libcontract_spike_atom.so");
+    }
+
+    private static Set<RISCVObservation> observations(TestResult result, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        if (result == null) {
+            return Set.of();
+        }
+        return result.getDistinguishingObservations().stream()
+                .map(o -> (RISCVObservation) o)
+                .filter(o -> allowed.contains(o.observation()))
+                .collect(Collectors.toCollection(CompareSpikeRvfiAtoms::observationSet));
+    }
+
+    private static Set<RISCVObservation> difference(Set<RISCVObservation> left, Set<RISCVObservation> right) {
+        Set<RISCVObservation> out = observationSet();
+        out.addAll(left);
+        out.removeAll(right);
+        return out;
+    }
+
+    private static Set<RISCVObservation> observationSet() {
+        return new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+    }
+
+    private record AtomComparisonReport(
+            String processor,
+            List<String> template,
+            List<String> isa,
+            String spikeIsa,
+            String spikeLibrary,
+            AtomComparisonSummary summary,
+            List<AtomComparisonCase> cases
+    ) {
+    }
+
+    private record AtomComparisonSummary(
+            int total,
+            int spikeFailed,
+            int atomMismatches,
+            int attackerDistinguishable,
+            long rvfiElapsedMillis
+    ) {
+    }
+
+    private record AtomComparisonCase(
+            int index,
+            boolean mismatch,
+            boolean attackerDistinguishable,
+            Set<RISCVObservation> spikeAtoms,
+            Set<RISCVObservation> rvfiAtoms,
+            Set<RISCVObservation> onlySpike,
+            Set<RISCVObservation> onlyRvfi,
+            String spikeError
+    ) {
     }
 }
 

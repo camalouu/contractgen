@@ -43,15 +43,25 @@ txt_out="/home/yosys/project/${platform,,}-${count}-${reps}rep-${suffix}.txt"
   # --reps 3
   # -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
 
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
--p "IBEX_TEST" \
--i BASE,M \
--c BASE \
--t 8 \
--e "1000-IBEX-testcases.json" \
--o "ibex-test-replay-result.json" \
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
+# -p "IBEX_TEST" \
+# -i BASE,M \
+# -c BASE \
+# -t 8 \
+# -e "1000-IBEX-testcases.json" \
+# -o "ibex-test-replay-result.json" \
 # --verilator \
 # --txt "${txt_out}-replay-result.txt" \
+
+
+java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compare_spike_rvfi_atoms \
+-i BASE,M \
+-c BASE,ALIGNED,BRANCH \
+-t 8 \
+-o "spike-rvfi-compare.json" \
+-n 10000 \
+-s 66
+# -e "12000-IBEX-testcases.json" \
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compact_tests \
 #     -i "${count}-${platform}-clean-original-set.json" \
