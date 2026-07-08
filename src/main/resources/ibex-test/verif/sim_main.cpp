@@ -1,38 +1,19 @@
 #include "Vtop.h"
+#include "ibex_test_runtime.hpp"
 #include "verilated.h"
-#include "verilated_vcd_c.h"
 #include <cstdio>
+#include <exception>
 
 int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
-    Verilated::traceEverOn(true);
-    Vtop *top = new Vtop;
-    VerilatedVcdC* tfp = new VerilatedVcdC;
-    top->trace(tfp, 99);
-    tfp->open("sim.vcd");
-
-    int cycles = 10000;   // timeout after 10000 cycles
-
-    for (int i = 0; i < cycles; i++) {
-        top->clk = 0; top->eval();
-        tfp->dump(i*2);
-        if (Verilated::gotFinish()) {
-            break;
-        }
-        top->clk = 1; top->eval();
-        tfp->dump(i*2 + 1);
-        if (Verilated::gotFinish()) {
-            break;
-        }
+    try {
+        IbexTestCaseImage test_case;
+        contract_ibex_load_legacy_dat_files(test_case, ".");
+        IbexTestStatus status = contract_ibex_run_case(test_case, 10000);
+        std::printf("%s\n", contract_ibex_status_name(status));
+        return status == IbexTestStatus::Error ? 1 : 0;
+    } catch (const std::exception& e) {
+        std::printf("ERROR: %s\n", e.what());
+        return 1;
     }
-
-    if (!Verilated::gotFinish()) {
-        std::printf("TIMEOUT\n");
-    }
-
-    top->final();
-    tfp->close();
-    delete top;
-    delete tfp;
-    return 0;
 }

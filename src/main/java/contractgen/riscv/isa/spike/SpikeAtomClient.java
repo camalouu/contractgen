@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 
 public final class SpikeAtomClient {
     private final ContractSpikeLibrary library;
-    private final Gson gson = new Gson();
+    private static final Gson GSON = new Gson();
 
     private interface ContractSpikeLibrary extends Library {
         Pointer contract_spike_atoms_json(String testcasesJson, String isa, int ordinal);
@@ -29,17 +29,23 @@ public final class SpikeAtomClient {
     }
 
     public List<SpikeCaseAtoms> runAll(String testcasesJson, String isa, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        return parseResponse(runAllJson(testcasesJson, isa), allowed);
+    }
+
+    public String runAllJson(String testcasesJson, String isa) {
         Pointer pointer = library.contract_spike_atoms_json(testcasesJson, isa, -1);
         if (pointer == null) {
             throw new IllegalStateException("Spike atom library returned null");
         }
-        String json;
         try {
-            json = pointer.getString(0);
+            return pointer.getString(0);
         } finally {
             library.contract_spike_free(pointer);
         }
-        SpikeResponse response = gson.fromJson(json, SpikeResponse.class);
+    }
+
+    public static List<SpikeCaseAtoms> parseResponse(String json, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        SpikeResponse response = GSON.fromJson(json, SpikeResponse.class);
         if (response == null) {
             throw new IllegalStateException("Spike atom library returned empty JSON");
         }

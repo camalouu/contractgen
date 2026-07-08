@@ -11,7 +11,7 @@ module data_mem (
     output logic [31:0]  data_rdata_o,
     output logic data_err_o,
     output logic [31:0] mem_addr_o [`COUNT - 1:0],
-    output logic [7:0] mem_data_o [`COUNT - 1:0],
+    output logic [7:0] mem_data_o [`COUNT - 1:0]
 );
 
     logic [31:0] last_addr [`COUNT - 1:0];
@@ -19,8 +19,10 @@ module data_mem (
     logic [32:0] temp;
     
     initial begin
-        last_addr = 0;
-        last_values = 0;
+        for (int k = 0; k < `COUNT; k = k + 1) begin
+            last_addr[k] = 0;
+            last_values[k] = 0;
+        end
     end
 
     integer i;

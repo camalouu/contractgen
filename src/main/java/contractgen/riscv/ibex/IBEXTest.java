@@ -97,9 +97,20 @@ public class IBEXTest extends MARCH {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
-        System.out.println(output);
+        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, true, 240);
+        if (output == null || output.contains("Process exited with code")) {
+            throw new IllegalStateException("IBEX_TEST compilation failed:\n" + tail(output, 120));
+        }
         System.out.println("Compilation finished.");
+    }
+
+    private static String tail(String output, int maxLines) {
+        if (output == null) {
+            return "<no output>";
+        }
+        String[] lines = output.split("\\R");
+        int start = Math.max(0, lines.length - maxLines);
+        return String.join(System.lineSeparator(), java.util.Arrays.copyOfRange(lines, start, lines.length));
     }
 
     @Override

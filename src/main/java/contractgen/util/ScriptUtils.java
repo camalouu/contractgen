@@ -27,6 +27,7 @@ public class ScriptUtils {
             List<String> cmdList = new ArrayList<>(List.of(path.split(" +")));
             ProcessBuilder pb = new ProcessBuilder(cmdList);
             pb.directory(new File(path.split(" +")[0]).getParentFile());
+            pb.redirectErrorStream(true);
             boolean success = false;
             while (!success) {
                 try {
@@ -49,7 +50,11 @@ public class ScriptUtils {
             BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                sb.append(line);
+                sb.append(line).append(System.lineSeparator());
+            }
+            int exitCode = p.exitValue();
+            if (exitCode != 0) {
+                sb.append("Process exited with code ").append(exitCode).append(System.lineSeparator());
             }
             if (!silent) {
                 System.out.println(sb);

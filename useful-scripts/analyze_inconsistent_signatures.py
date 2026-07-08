@@ -32,9 +32,16 @@ def main():
             for line in f:
                 stripped = line.strip()
                 
-                if stripped == '"observations": [':
+                if stripped in ('"observations": []', '"observations": [],'):
+                    in_observations = False
+                    current_atoms = []
+                    current_atom_type = None
+                    current_atom_obs = None
+                elif stripped == '"observations": [':
                     in_observations = True
                     current_atoms = []
+                    current_atom_type = None
+                    current_atom_obs = None
                 elif in_observations:
                     if stripped == '],' or stripped == ']':
                         in_observations = False
@@ -73,6 +80,7 @@ def main():
         
     print(f"\nFinished parsing in {time.time()-t0:.2f}s")
     print(f"Total test cases: {total_tests}")
+    print(f"Total signatures: {len(sig_stats)}")
     
     inconsistent = []
     for sig, stats in sig_stats.items():

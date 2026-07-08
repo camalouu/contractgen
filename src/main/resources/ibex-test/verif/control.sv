@@ -1,3 +1,5 @@
+import "DPI-C" context function int contract_ibex_max_instr_count();
+
 module control (
     input logic clk_i,
     input logic retire_i,
@@ -7,23 +9,18 @@ module control (
     input logic [31:0] instr_addr_2_i,
     output logic enable_1_o,
     output logic enable_2_o,
-    output logic finished_o,
+    output logic finished_o
 );
-    (* nomem2reg *)
-    reg [31:0] counters [0:0];
     int retire_count = 0;
     int fetch_1_count = 0;
     int fetch_2_count = 0;
     int MAX_INSTR_COUNT;
 
-    assign MAX_INSTR_COUNT = counters[0];
-
     initial begin
+        MAX_INSTR_COUNT = contract_ibex_max_instr_count();
         enable_1_o <= 1;
         enable_2_o <= 1;
         finished_o <= 0;
-
-//        $readmemh({"count.dat"}, MAX_INSTR_COUNT, 0, 0);
     end
 
     always @(negedge clk_i) begin

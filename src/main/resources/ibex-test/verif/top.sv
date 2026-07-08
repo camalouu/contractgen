@@ -1,6 +1,8 @@
 module top (
 `ifdef USEVERILATOR
-    input logic clk
+    input logic clk,
+    output logic finished_o,
+    output logic atk_equiv_o
 `endif
 );
 `ifndef USEVERILATOR
@@ -67,26 +69,31 @@ module top (
     logic enable_2;
     logic finished;
 
+`ifdef USEVERILATOR
+    assign finished_o = finished;
+    assign atk_equiv_o = atk_equiv;
+`endif
+
     instr_mem #(
-        .ID                     (1),
+        .ID                     (1)
     ) instr_mem_1 (
         .clk_i                  (clock_1),
         .enable_i               (enable_1),
         .instr_req_i            (instr_req_1),
         .instr_addr_i           (instr_addr_1),
         .instr_gnt_o            (instr_gnt_1),
-        .instr_o                (instr_1),
+        .instr_o                (instr_1)
     );
 
     instr_mem #(
-        .ID                     (2),
+        .ID                     (2)
     ) instr_mem_2 (
         .clk_i                  (clock_2),
         .enable_i               (enable_2),
         .instr_req_i            (instr_req_2),
         .instr_addr_i           (instr_addr_2),
         .instr_gnt_o            (instr_gnt_2),
-        .instr_o                (instr_2),
+        .instr_o                (instr_2)
     );
 
     data_mem data_mem_1 (
@@ -99,7 +106,7 @@ module top (
         .data_gnt_o             (data_gnt_1),
         .data_rvalid_o          (data_rvalid_1),
         .data_rdata_o           (data_rdata_1),
-        .data_err_o             (data_err_1),
+        .data_err_o             (data_err_1)
     );
 
     data_mem data_mem_2 (
@@ -112,12 +119,12 @@ module top (
         .data_gnt_o             (data_gnt_2),
         .data_rvalid_o          (data_rvalid_2),
         .data_rdata_o           (data_rdata_2),
-        .data_err_o             (data_err_2),
+        .data_err_o             (data_err_2)
     );
 
     ibex_core #(
-        .RV32M                  (ibex_pkg::RV32MFast),
-        .WritebackStage         (1'b0),
+        .RV32M                  (2),
+        .WritebackStage         (1'b0)
     ) core_1 (
         .clk_i                  (clock_1),
         .rst_ni                 (reset_1),
@@ -160,12 +167,12 @@ module top (
         .core_sleep_o           (),
 
         .fetch_o                (fetch_1),
-        .retire_o               (retire_1),
+        .retire_o               (retire_1)
     );
 
     ibex_core #(
-        .RV32M                  (ibex_pkg::RV32MFast),
-        .WritebackStage         (1'b0),
+        .RV32M                  (2),
+        .WritebackStage         (1'b0)
     ) core_2 (
         .clk_i                  (clock_2),
         .rst_ni                 (reset_2),
@@ -208,14 +215,14 @@ module top (
         .core_sleep_o           (),
 
         .fetch_o                (fetch_2),
-        .retire_o               (retire_2),
+        .retire_o               (retire_2)
     );
 
     atk atk (
         .clk_i                  (clock),
         .atk_observation_1_i    (clock_1),
         .atk_observation_2_i    (clock_2),
-        .atk_equiv_o            (atk_equiv),
+        .atk_equiv_o            (atk_equiv)
     );
 
     clk_sync clk_sync (
@@ -224,7 +231,7 @@ module top (
         .retire_2_i             (retire_2),
         .clk_1_o                (clock_1),
         .clk_2_o                (clock_2),
-        .retire_o               (retire),
+        .retire_o               (retire)
     );
 
     control control (
@@ -236,15 +243,11 @@ module top (
         .instr_addr_2_i         (instr_addr_2),
         .enable_1_o             (enable_1),
         .enable_2_o             (enable_2),
-        .finished_o             (finished),
+        .finished_o             (finished)
     );
 
     always @(posedge clk) begin
-        if (finished && !atk_equiv) begin
-            $display("FAIL");
-            $finish;
-        end else if (finished) begin
-            $display("SUCCESS");
+        if (finished) begin
             $finish;
         end
     end

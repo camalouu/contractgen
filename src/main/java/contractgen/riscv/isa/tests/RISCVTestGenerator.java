@@ -183,6 +183,16 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         for (RISCV_TYPE type : types) {
             Map<Integer, Integer> registers = randomRegisters();
             RISCVInstruction instruction = randomInstructionFromType(type);
+            List<RISCVInstruction> sharedSuffix = randomSuffix ? randomSequence(r.nextInt(5, 25)) : List.of(
+                    RISCVInstruction.NOP(),
+                    RISCVInstruction.NOP(),
+                    RISCVInstruction.NOP(),
+                    RISCVInstruction.NOP(),
+                    RISCVInstruction.NOP()
+            );
+            if (!allow_misaligned_memory) {
+                sharedSuffix = alignMemoryAddresses(sharedSuffix);
+            }
             
             List<RISCVInstruction> reset = new ArrayList<>();
             if (reps > 1) {
@@ -201,20 +211,10 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 boolean valid = true;
                 
                 for (int i = 0; i < reps; i++) {
-                    List<RISCVInstruction> suffix = 
-                            randomSuffix ? randomSequence(r.nextInt(5, 25))
-                            : List.of(
-                                    RISCVInstruction.NOP(),
-                                    RISCVInstruction.NOP(),
-                                    RISCVInstruction.NOP(),
-                                    RISCVInstruction.NOP(),
-                                    RISCVInstruction.NOP()
-                                    );
-                            
+                    List<RISCVInstruction> suffix = sharedSuffix;
                     List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     
                     if (!allow_misaligned_memory) {
-                        suffix = alignMemoryAddresses(suffix);
                         rprefix = alignMemoryAddresses(rprefix);
                     }
                     
