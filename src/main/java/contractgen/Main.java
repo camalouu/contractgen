@@ -848,8 +848,14 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--negative-signature-threshold"}, description = "Maximum attacker-negative RTL executions for one exact Spike atom signature before skipping remaining cases. Use 0 to disable negative skipping.", defaultValue = "0")
     int negativeSignatureThreshold = 0;
 
-    @Option(names = {"--use-skipped-evidence"}, description = "Add skipped exact-signature duplicates to the contract as copied evidence.")
+    @Option(names = {"--use-skipped-evidence"}, description = "Add skipped cases to the contract as copied evidence.")
     boolean useSkippedEvidence = false;
+
+    @Option(names = {"--skip-positive-supersets"}, description = "Skip a Spike signature as attacker-positive when it is a strict superset of a previously attacker-positive signature.")
+    boolean skipPositiveSupersets = false;
+
+    @Option(names = {"--skip-negative-subsets"}, description = "Skip a Spike signature as attacker-negative when it is a strict subset of a previously attacker-negative signature.")
+    boolean skipNegativeSubsets = false;
 
     @Override
     public Integer call() {
@@ -887,7 +893,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         Path ibexTestLibrary = resolveIbexTestLibrary(ibexTest);
         long ibexResolveTime = System.currentTimeMillis() - ibexResolveStart;
         long attackerStart = System.currentTimeMillis();
-        IBEXTestAdaptiveRunner.Result adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence)
+        IBEXTestAdaptiveRunner.Result adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
                 .run(tests, ordinalTests, spikeByOrdinal);
         long attackerTime = System.currentTimeMillis() - attackerStart;
         failures.addAll(adaptiveResult.failures());
@@ -914,13 +920,18 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
         long timeElapsed = System.currentTimeMillis() - start;
         System.out.println("\nGeneration time: " + timeElapsed);
-        System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, useSkippedEvidence=%s, negativeThreshold=%d%n",
+        System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, skippedPositiveSuperset=%d, skippedNegativeSubset=%d, relationConflicts=%d, useSkippedEvidence=%s, negativeThreshold=%d, skipPositiveSupersets=%s, skipNegativeSubsets=%s%n",
                 adaptiveResult.uniqueSignatures(),
                 adaptiveResult.stats().executed(),
                 adaptiveResult.stats().skippedPositive(),
                 adaptiveResult.stats().skippedNegative(),
+                adaptiveResult.stats().skippedPositiveSuperset(),
+                adaptiveResult.stats().skippedNegativeSubset(),
+                adaptiveResult.stats().relationConflicts(),
                 useSkippedEvidence,
-                negativeSignatureThreshold);
+                negativeSignatureThreshold,
+                skipPositiveSupersets,
+                skipNegativeSubsets);
         System.out.println(contract);
         if (txt != null) {
             try {
@@ -942,8 +953,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tRTL Executed: ").append(adaptiveResult.stats().executed()).append("\n");
                 sb.append("\tSkipped Positive Signature: ").append(adaptiveResult.stats().skippedPositive()).append("\n");
                 sb.append("\tSkipped Negative Threshold: ").append(adaptiveResult.stats().skippedNegative()).append("\n");
+                sb.append("\tSkipped Positive Superset: ").append(adaptiveResult.stats().skippedPositiveSuperset()).append("\n");
+                sb.append("\tSkipped Negative Subset: ").append(adaptiveResult.stats().skippedNegativeSubset()).append("\n");
+                sb.append("\tRelation Conflicts: ").append(adaptiveResult.stats().relationConflicts()).append("\n");
                 sb.append("\tUse Skipped Evidence: ").append(useSkippedEvidence).append("\n");
                 sb.append("\tNegative Signature Threshold: ").append(negativeSignatureThreshold).append("\n");
+                sb.append("\tSkip Positive Supersets: ").append(skipPositiveSupersets).append("\n");
+                sb.append("\tSkip Negative Subsets: ").append(skipNegativeSubsets).append("\n");
                 sb.append("\n");
                 sb.append(contract);
                 Files.write(Path.of(txt.getPath()), sb.toString().getBytes());

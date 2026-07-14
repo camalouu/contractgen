@@ -23,8 +23,14 @@ public final class IBEXTestAdaptiveRunner {
     private final int threads;
     private final int negativeSignatureThreshold;
     private final boolean useSkippedEvidence;
+    private final boolean skipPositiveSupersets;
+    private final boolean skipNegativeSubsets;
 
     public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence) {
+        this(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, false, false);
+    }
+
+    public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets) {
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("negativeSignatureThreshold must be >= 0.");
         }
@@ -32,6 +38,8 @@ public final class IBEXTestAdaptiveRunner {
         this.threads = Math.max(1, threads);
         this.negativeSignatureThreshold = negativeSignatureThreshold;
         this.useSkippedEvidence = useSkippedEvidence;
+        this.skipPositiveSupersets = skipPositiveSupersets;
+        this.skipNegativeSubsets = skipNegativeSubsets;
     }
 
     public Result run(
@@ -41,6 +49,9 @@ public final class IBEXTestAdaptiveRunner {
     ) {
         List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal);
         System.out.printf("Running IBEX_TEST adaptive attacker labels for %d cases across %d exact signatures.%n", tests.size(), signatureGroups.size());
+        if (skipPositiveSupersets || skipNegativeSubsets) {
+            return runWithSignatureRelations(tests, ordinalTests, spikeByOrdinal, signatureGroups);
+        }
         RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
         Stats stats = new Stats();
         List<String> failures = Collections.synchronizedList(new ArrayList<>());
@@ -70,6 +81,94 @@ public final class IBEXTestAdaptiveRunner {
         });
         System.out.println();
         return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures));
+    }
+
+    private Result runWithSignatureRelations(
+            List<TestCase> tests,
+            List<TestCase> ordinalTests,
+            Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
+            List<SignatureGroup> signatureGroups
+    ) {
+        RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
+        Stats stats = new Stats();
+        List<String> failures = new ArrayList<>();
+        List<AtomSignature> knownPositive = new ArrayList<>();
+        List<AtomSignature> knownNegative = new ArrayList<>();
+        IBEXTestAttackerClient ibexAttacker = new IBEXTestAttackerClient(ibexTestLibrary);
+
+        for (SignatureGroup group : signatureGroups) {
+            boolean positiveBySuperset = skipPositiveSupersets && hasKnownPositiveSubset(group.signature(), knownPositive);
+            boolean negativeBySubset = skipNegativeSubsets && hasKnownNegativeSuperset(group.signature(), knownNegative);
+            if (positiveBySuperset && negativeBySubset) {
+                stats.relationConflicts.incrementAndGet();
+            } else if (positiveBySuperset) {
+                skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, true);
+                reportSequentialProgress(stats, signatureGroups.size());
+                continue;
+            } else if (negativeBySubset) {
+                skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, false);
+                reportSequentialProgress(stats, signatureGroups.size());
+                continue;
+            }
+
+            executeSignatureGroup(ibexAttacker, tests, ordinalTests, spikeByOrdinal, group, mergedResults, stats, failures);
+            GroupLabels labels = labelsForGroup(group, mergedResults);
+            if (labels.hasPositive()) {
+                knownPositive.add(group.signature());
+            } else if (labels.hasNegative()) {
+                knownNegative.add(group.signature());
+            }
+            reportSequentialProgress(stats, signatureGroups.size());
+        }
+
+        System.out.println();
+        return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures));
+    }
+
+    private void skipRelationGroup(
+            List<TestCase> tests,
+            Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
+            SignatureGroup group,
+            RISCVTestResult[] mergedResults,
+            Stats stats,
+            boolean attackerLabel
+    ) {
+        for (int ordinal : group.ordinals()) {
+            TestCase original = tests.get(ordinal);
+            SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
+            if (attackerLabel) {
+                stats.skippedPositiveSuperset.incrementAndGet();
+            } else {
+                stats.skippedNegativeSubset.incrementAndGet();
+            }
+            if (useSkippedEvidence) {
+                mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, original.getIndex());
+            }
+        }
+    }
+
+    private void reportSequentialProgress(Stats stats, int total) {
+        int doneGroups = stats.completedGroups.incrementAndGet();
+        if (shouldReportProgress(doneGroups, total)) {
+            System.out.printf("IBEX_TEST adaptive progress: %d of %d signatures, %d RTL executions.%n", doneGroups, total, stats.executed.get());
+        }
+    }
+
+    private static GroupLabels labelsForGroup(SignatureGroup group, RISCVTestResult[] mergedResults) {
+        boolean hasPositive = false;
+        boolean hasNegative = false;
+        for (int ordinal : group.ordinals()) {
+            RISCVTestResult result = mergedResults[ordinal];
+            if (result == null) {
+                continue;
+            }
+            if (result.isAdversaryDistinguishable()) {
+                hasPositive = true;
+            } else {
+                hasNegative = true;
+            }
+        }
+        return new GroupLabels(hasPositive, hasNegative);
     }
 
     private void executeSignatureGroup(
@@ -160,9 +259,24 @@ public final class IBEXTestAdaptiveRunner {
         private AtomSignature {
             atoms = Collections.unmodifiableSet(observationSet(atoms));
         }
+
+        private boolean isStrictSubsetOf(AtomSignature other) {
+            return atoms.size() < other.atoms.size() && other.atoms.containsAll(atoms);
+        }
     }
 
     private record SignatureGroup(AtomSignature signature, List<Integer> ordinals) {
+    }
+
+    private record GroupLabels(boolean hasPositive, boolean hasNegative) {
+    }
+
+    private static boolean hasKnownPositiveSubset(AtomSignature signature, List<AtomSignature> knownPositive) {
+        return knownPositive.stream().anyMatch(known -> known.isStrictSubsetOf(signature));
+    }
+
+    private static boolean hasKnownNegativeSuperset(AtomSignature signature, List<AtomSignature> knownNegative) {
+        return knownNegative.stream().anyMatch(known -> signature.isStrictSubsetOf(known));
     }
 
     private static Set<RISCVObservation> observationSet(Set<RISCVObservation> atoms) {
@@ -179,6 +293,9 @@ public final class IBEXTestAdaptiveRunner {
         private final AtomicInteger executed = new AtomicInteger();
         private final AtomicInteger skippedPositive = new AtomicInteger();
         private final AtomicInteger skippedNegative = new AtomicInteger();
+        private final AtomicInteger skippedPositiveSuperset = new AtomicInteger();
+        private final AtomicInteger skippedNegativeSubset = new AtomicInteger();
+        private final AtomicInteger relationConflicts = new AtomicInteger();
         private final AtomicInteger failureCount = new AtomicInteger();
 
         public int executed() {
@@ -191,6 +308,18 @@ public final class IBEXTestAdaptiveRunner {
 
         public int skippedNegative() {
             return skippedNegative.get();
+        }
+
+        public int skippedPositiveSuperset() {
+            return skippedPositiveSuperset.get();
+        }
+
+        public int skippedNegativeSubset() {
+            return skippedNegativeSubset.get();
+        }
+
+        public int relationConflicts() {
+            return relationConflicts.get();
         }
 
         public int failureCount() {
