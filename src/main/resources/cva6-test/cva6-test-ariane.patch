@@ -1,0 +1,28 @@
+--- a/corev_apu/src/ariane.sv
++++ b/corev_apu/src/ariane.sv
+@@ -63,7 +63,11 @@
+   output rvfi_probes_t rvfi_probes_o,
+   // memory side
+   output noc_req_t                     noc_req_o,
+-  input  noc_resp_t                    noc_resp_i
++  input  noc_resp_t                    noc_resp_i,
++  input logic enable_issue_i,
++  output logic issue_o,
++  output logic retire_o,
++  output logic trap_o
+ );
+ 
+   cvxif_req_t  cvxif_req;
+@@ -105,7 +109,11 @@
+     .cvxif_req_o          ( cvxif_req                 ),
+     .cvxif_resp_i         ( cvxif_resp                ),
+     .noc_req_o            ( noc_req_o                 ),
+-    .noc_resp_i           ( noc_resp_i                )
++    .noc_resp_i           ( noc_resp_i                ),
++    .enable_issue_i       ( enable_issue_i            ),
++    .issue_o              ( issue_o                   ),
++    .retire_o             ( retire_o                  ),
++    .trap_o               ( trap_o                    )
+   );
+ 
+   if (CVA6Cfg.CvxifEn) begin : gen_example_coprocessor

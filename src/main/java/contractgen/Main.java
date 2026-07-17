@@ -1543,7 +1543,7 @@ class CompareCva6TestAttacker implements Callable<Integer> {
 
         CVA6Test cva6Test = new CVA6Test(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), Set.of(), isa, false);
         CVA6TestAttackerClient cva6TestAttackerClient = new CVA6TestAttackerClient(resolveCva6TestLibrary(cva6Test));
-        AttackerRun oldRun = runAttackerLabels(
+        AttackerRun oldRun = runLegacyCva6AttackerLabels(
                 new CVA6(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), Set.of(), isa, false, true),
                 ordinalTests,
                 "CVA6"
@@ -1596,7 +1596,7 @@ class CompareCva6TestAttacker implements Callable<Integer> {
         return mismatches == 0 ? 0 : 2;
     }
 
-    private AttackerRun runAttackerLabels(MARCH march, List<TestCase> tests, String name) {
+    private AttackerRun runLegacyCva6AttackerLabels(MARCH march, List<TestCase> tests, String name) {
         System.out.printf("Running %s attacker labels for %d cases.%n", name, tests.size());
         march.compile();
         Boolean[] labels = new Boolean[tests.size()];
@@ -1629,6 +1629,34 @@ class CompareCva6TestAttacker implements Callable<Integer> {
                 throw new RuntimeException(e);
             }
         });
+
+        int retried = 0;
+        int retryAttempts = 0;
+        for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
+            if (labels[ordinal] != null) continue;
+
+            TestCase testCase = tests.get(ordinal);
+            march.writeTestCase(1, testCase);
+            retried++;
+            for (int attempt = 0; attempt < 5 && labels[ordinal] == null; attempt++) {
+                SIMULATION_RESULT result = march.simulate(1);
+                statuses[ordinal] = result;
+                labels[ordinal] = switch (result) {
+                    case FAIL -> true;
+                    case SUCCESS, FALSE_POSITIVE -> false;
+                    case ERROR, TIMEOUT, UNKNOWN -> null;
+                };
+                retryAttempts++;
+            }
+        }
+        if (retried > 0) {
+            System.out.printf(
+                    "%s retried %d inconclusive cases serially in %d attempts.%n",
+                    name,
+                    retried,
+                    retryAttempts
+            );
+        }
         System.out.println();
         return new AttackerRun(labels, statuses);
     }
@@ -1686,7 +1714,8 @@ class CompareCva6TestAttacker implements Callable<Integer> {
                 library = Path.of("/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so");
             }
         }
-        if (!Files.exists(library) && !explicitLibrary) {
+        if (!explicitLibrary) {
+            System.out.println("Rebuilding CVA6_TEST attacker shared library from the current harness sources.");
             cva6Test.compile();
         }
         if (!Files.exists(library)) {

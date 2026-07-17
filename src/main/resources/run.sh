@@ -4,9 +4,9 @@ set -euo pipefail
 cd /home/yosys/project
 mvn clean package
 
-platform="IBEX"
-# platform="CVA6"
-count=10000
+# platform="IBEX"
+platform="CVA6"
+count=2500
 reps=1
 
 json_out="/home/yosys/project/${platform,,}-${count}-base-results.json"
@@ -67,33 +67,33 @@ txt_out="/home/yosys/project/${platform,,}-${count}-base-results.txt"
 # -e "10000-IBEX-base-testcases.json" \
 # -o "ibex-test-attacker-harness-compare.json" \
 #
-# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compare_cva6_test_attacker \
-# -i BASE,M \
-# -t 8 \
-# -e "887-CVA6-testcases.json" \
-# -o "cva6-test-attacker-harness-compare.json" \
-
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_spike \
+java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main compare_cva6_test_attacker \
 -i BASE,M \
--c BASE,ALIGNED,BRANCH,DEPENDENCIES \
 -t 8 \
--e "${count}-${platform}-full-testcases.json" \
--o "${count}-${platform}-full-adaptive-result.json" \
---txt "${count}-${platform}-full-adaptive-result.txt" \
---negative-signature-threshold 10 \
+-e "2235-CVA6-full-testcases.json" \
+-o "cva6-test-attacker-harness-compare.json" \
+
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_spike \
+# -i BASE,M \
+# -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
+# -t 8 \
+# -e "${count}-${platform}-full-testcases.json" \
+# -o "${count}-${platform}-full-adaptive-result.json" \
+# --txt "${count}-${platform}-full-adaptive-result.txt" \
+# --negative-signature-threshold 10 \
 # --skip-negative-subsets \
 # --skip-positive-supersets \
 # --use-skipped-evidence \
 
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
--p "IBEX" \
--i BASE,M \
--c BASE,ALIGNED,BRANCH,DEPENDENCIES \
--t 8 \
--e "${count}-${platform}-full-testcases.json" \
--o "${count}-${platform}-full-replay-result.json" \
---txt "${count}-${platform}-full-replay-result.txt" \
---verilator \
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
+# -p "IBEX" \
+# -i BASE,M \
+# -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
+# -t 8 \
+# -e "${count}-${platform}-full-testcases.json" \
+# -o "${count}-${platform}-full-replay-result.json" \
+# --txt "${count}-${platform}-full-replay-result.txt" \
+# --verilator \
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main evaluate \
 # -c "150000-IBEX-base-replay-result.json" \

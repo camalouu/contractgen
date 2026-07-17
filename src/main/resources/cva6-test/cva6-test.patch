@@ -1,0 +1,138 @@
+diff --git a/core/cva6.sv b/core/cva6.sv
+index e42e6c38..af2ac095 100644
+--- a/core/cva6.sv
++++ b/core/cva6.sv
+@@ -327,7 +327,11 @@ module cva6
+     // noc request, can be AXI or OpenPiton - SUBSYSTEM
+     output noc_req_t noc_req_o,
+     // noc response, can be AXI or OpenPiton - SUBSYSTEM
+-    input noc_resp_t noc_resp_i
++    input noc_resp_t noc_resp_i,
++    input logic enable_issue_i,
++    output logic issue_o,
++    output logic retire_o,
++    output logic trap_o
+ );
+ 
+   localparam type interrupts_t = struct packed {
+@@ -678,7 +682,9 @@ module cva6
+       .icache_dreq_i      (icache_dreq_cache_if),
+       .fetch_entry_o      (fetch_entry_if_id),
+       .fetch_entry_valid_o(fetch_valid_if_id),
+-      .fetch_entry_ready_i(fetch_ready_id_if)
++      .fetch_entry_ready_i(fetch_ready_id_if),
++      .enable_issue_i     (enable_issue_i),
++      .issue_o            (issue_o)
+   );
+ 
+   // ---------
+@@ -1095,6 +1101,8 @@ module cva6
+   );
+ 
+   assign commit_ack = commit_macro_ack & ~commit_drop_id_commit;
++  assign retire_o = commit_ack[0];
++  assign trap_o = ex_commit.valid;
+ 
+   // ------------
+   // CSR
+diff --git a/core/frontend/frontend.sv b/core/frontend/frontend.sv
+index e80f3638..37a38acb 100644
+--- a/core/frontend/frontend.sv
++++ b/core/frontend/frontend.sv
+@@ -62,8 +62,12 @@ module frontend
+     output fetch_entry_t [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_o,
+     // Handshake's valid between fetch and decode - ID_STAGE
+     output logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_valid_o,
+     // Handshake's ready between fetch and decode - ID_STAGE
+-    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i
++    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i,
++    // Contract-synthesis harness issue gate.
++    input logic enable_issue_i,
++    // Contract-synthesis harness issue observation.
++    output logic issue_o
+ );
+ 
+   localparam type bht_update_t = struct packed {
+@@ -572,7 +576,9 @@ module frontend
+       .replay_addr_o      (replay_addr),
+       .fetch_entry_o      (fetch_entry_o),         // to back-end
+       .fetch_entry_valid_o(fetch_entry_valid_o),   // to back-end
+-      .fetch_entry_ready_i(fetch_entry_ready_i)    // to back-end
++      .fetch_entry_ready_i(fetch_entry_ready_i),   // to back-end
++      .enable_issue_i     (enable_issue_i),
++      .issue_o            (issue_o)
+   );
+ 
+ endmodule
+diff --git a/core/frontend/instr_queue.sv b/core/frontend/instr_queue.sv
+index 77fdf9fb..029c9b0d 100644
+--- a/core/frontend/instr_queue.sv
++++ b/core/frontend/instr_queue.sv
+@@ -88,1 +88,5 @@ module instr_queue
+-    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i
++    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i,
++    // Contract-synthesis harness issue gate.
++    input logic enable_issue_i,
++    // Contract-synthesis harness issue observation.
++    output logic issue_o
+@@ -147,5 +151,5 @@ module instr_queue
+   logic [CVA6Cfg.INSTR_PER_FETCH-1:0] instr_overflow_fifo;
+ 
+-  assign ready_o = ~(|instr_queue_full) & ~full_address;
++  assign ready_o = enable_issue_i & ~(|instr_queue_full) & ~full_address;
+ 
+   if (CVA6Cfg.RVC) begin : gen_multiple_instr_per_fetch_with_C
+@@ -300,1 +304,2 @@ module instr_queue
+-  assign fetch_entry_valid_o[0] = ~(&instr_queue_empty);
++  assign fetch_entry_valid_o[0] = enable_issue_i & ~(&instr_queue_empty);
++  assign issue_o = fetch_entry_valid_o[0];
+@@ -303,1 +308,1 @@ module instr_queue
+-    assign fetch_entry_valid_o[NID] = ~|(instr_queue_empty & idx_ds[1]) & ~(&fetch_entry_is_cf);
++    assign fetch_entry_valid_o[NID] = enable_issue_i & ~|(instr_queue_empty & idx_ds[1]) & ~(&fetch_entry_is_cf);
+diff --git a/core/include/cv32a6_imac_sv0_config_pkg.sv b/core/include/cv32a6_imac_sv0_config_pkg.sv
+index 9caf64ab..9fdea275 100644
+--- a/core/include/cv32a6_imac_sv0_config_pkg.sv
++++ b/core/include/cv32a6_imac_sv0_config_pkg.sv
+@@ -66,7 +66,7 @@ package cva6_config_pkg;
+ 
+   localparam config_pkg::cache_type_t CVA6ConfigDcacheType = config_pkg::WT;
+ 
+-  localparam CVA6ConfigMmuPresent = 1;
++  localparam CVA6ConfigMmuPresent = 0;
+ 
+   localparam CVA6ConfigRvfiTrace = 1;
+ 
+@@ -77,7 +77,7 @@ package cva6_config_pkg;
+       FpgaAlteraEn: bit'(0),  // for Altera (only)
+       TechnoCut: bit'(0),
+       SuperscalarEn: bit'(0),
+-      NrCommitPorts: unsigned'(2),
++      NrCommitPorts: unsigned'(1),
+       AxiAddrWidth: unsigned'(CVA6ConfigAxiAddrWidth),
+       AxiDataWidth: unsigned'(CVA6ConfigAxiDataWidth),
+       AxiIdWidth: unsigned'(CVA6ConfigAxiIdWidth),
+@@ -126,12 +126,18 @@ package cva6_config_pkg;
+       NrNonIdempotentRules: unsigned'(2),
+       NonIdempotentAddrBase: 1024'({64'b0, 64'b0}),
+       NonIdempotentLength: 1024'({64'b0, 64'b0}),
+-      NrExecuteRegionRules: unsigned'(3),
+-      ExecuteRegionAddrBase: 1024'({64'h8000_0000, 64'h1_0000, 64'h0}),
+-      ExecuteRegionLength: 1024'({64'h40000000, 64'h10000, 64'h1000}),
+-      NrCachedRegionRules: unsigned'(1),
+-      CachedRegionAddrBase: 1024'({64'h8000_0000}),
+-      CachedRegionLength: 1024'({64'h40000000}),
++      NrExecuteRegionRules: unsigned'(0),
++      ExecuteRegionAddrBase: 1024'(0),
++      ExecuteRegionLength: 1024'(0),
++      NrCachedRegionRules: unsigned'(0),
++      CachedRegionAddrBase: 1024'(0),
++      CachedRegionLength: 1024'(0),
++      // NrExecuteRegionRules: unsigned'(3),
++      // ExecuteRegionAddrBase: 1024'({64'h8000_0000, 64'h1_0000, 64'h0}),
++      // ExecuteRegionLength: 1024'({64'h40000000, 64'h10000, 64'h1000}),
++      // NrCachedRegionRules: unsigned'(1),
++      // CachedRegionAddrBase: 1024'({64'h8000_0000}),
++      // CachedRegionLength: 1024'({64'h40000000}),
+       MaxOutstandingStores: unsigned'(7),
+       DebugEn: bit'(1),
+       AxiBurstWriteEn: bit'(0),

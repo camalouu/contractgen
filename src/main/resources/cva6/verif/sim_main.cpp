@@ -2,6 +2,8 @@
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
+#include <cstdio>
+
 int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -27,8 +29,16 @@ int main(int argc, char **argv) {
     for (int i = 0; i < cycles; i++) {
         top->clk = 0; top->eval();
         tfp->dump(i*2 + reset*2);
+        if (Verilated::gotFinish()) {
+            std::fflush(stdout);
+            break;
+        }
         top->clk = 1; top->eval();
         tfp->dump(i*2 + 1 + reset*2);
+        if (Verilated::gotFinish()) {
+            std::fflush(stdout);
+            break;
+        }
     }
 
     top->final();
