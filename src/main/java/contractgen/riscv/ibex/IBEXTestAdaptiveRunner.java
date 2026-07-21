@@ -2,6 +2,7 @@ package contractgen.riscv.ibex;
 
 import contractgen.SIMULATION_RESULT;
 import contractgen.TestCase;
+import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.isa.contract.RISCVObservation;
 import contractgen.riscv.isa.contract.RISCVTestResult;
 import contractgen.riscv.isa.spike.SpikeAtomClient;
@@ -15,11 +16,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 public final class IBEXTestAdaptiveRunner {
     private static final int MAX_FAILURES = 10;
 
-    private final Path ibexTestLibrary;
+    private final Path attackerLibrary;
+    private final String harnessName;
+    private final Function<Path, AttackerHarnessClient> attackerFactory;
     private final int threads;
     private final int negativeSignatureThreshold;
     private final boolean useSkippedEvidence;
@@ -31,10 +35,28 @@ public final class IBEXTestAdaptiveRunner {
     }
 
     public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets) {
+        this(ibexTestLibrary, "IBEX_TEST", IBEXTestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets);
+    }
+
+    /**
+     * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
+     */
+    public IBEXTestAdaptiveRunner(
+            Path attackerLibrary,
+            String harnessName,
+            Function<Path, AttackerHarnessClient> attackerFactory,
+            int threads,
+            int negativeSignatureThreshold,
+            boolean useSkippedEvidence,
+            boolean skipPositiveSupersets,
+            boolean skipNegativeSubsets
+    ) {
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("negativeSignatureThreshold must be >= 0.");
         }
-        this.ibexTestLibrary = ibexTestLibrary;
+        this.attackerLibrary = attackerLibrary;
+        this.harnessName = harnessName;
+        this.attackerFactory = attackerFactory;
         this.threads = Math.max(1, threads);
         this.negativeSignatureThreshold = negativeSignatureThreshold;
         this.useSkippedEvidence = useSkippedEvidence;
@@ -48,7 +70,7 @@ public final class IBEXTestAdaptiveRunner {
             Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal
     ) {
         List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal);
-        System.out.printf("Running IBEX_TEST adaptive attacker labels for %d cases across %d exact signatures.%n", tests.size(), signatureGroups.size());
+        System.out.printf("Running %s adaptive attacker labels for %d cases across %d exact signatures.%n", harnessName, tests.size(), signatureGroups.size());
         if (skipPositiveSupersets || skipNegativeSubsets) {
             return runWithSignatureRelations(tests, ordinalTests, spikeByOrdinal, signatureGroups);
         }
@@ -59,16 +81,16 @@ public final class IBEXTestAdaptiveRunner {
         List<Thread> runners = new ArrayList<>();
         for (int id = 1; id <= threads; id++) {
             runners.add(new Thread(() -> {
-                IBEXTestAttackerClient ibexAttacker = new IBEXTestAttackerClient(ibexTestLibrary);
+                AttackerHarnessClient attacker = attackerFactory.apply(attackerLibrary);
                 int groupIndex;
                 while ((groupIndex = groupCursor.getAndIncrement()) < signatureGroups.size()) {
-                    executeSignatureGroup(ibexAttacker, tests, ordinalTests, spikeByOrdinal, signatureGroups.get(groupIndex), mergedResults, stats, failures);
+                    executeSignatureGroup(attacker, tests, ordinalTests, spikeByOrdinal, signatureGroups.get(groupIndex), mergedResults, stats, failures);
                     int doneGroups = stats.completedGroups.incrementAndGet();
                     if (shouldReportProgress(doneGroups, signatureGroups.size())) {
-                        System.out.printf("IBEX_TEST adaptive progress: %d of %d signatures, %d RTL executions.%n", doneGroups, signatureGroups.size(), stats.executed.get());
+                        System.out.printf("%s adaptive progress: %d of %d signatures, %d RTL executions.%n", harnessName, doneGroups, signatureGroups.size(), stats.executed.get());
                     }
                 }
-            }, "IBEX_TEST_Adaptive_Replay_Runner_" + id));
+            }, harnessName + "_Adaptive_Replay_Runner_" + id));
         }
         runners.forEach(Thread::start);
         runners.forEach(t -> {
@@ -94,7 +116,7 @@ public final class IBEXTestAdaptiveRunner {
         List<String> failures = new ArrayList<>();
         List<AtomSignature> knownPositive = new ArrayList<>();
         List<AtomSignature> knownNegative = new ArrayList<>();
-        IBEXTestAttackerClient ibexAttacker = new IBEXTestAttackerClient(ibexTestLibrary);
+        AttackerHarnessClient attacker = attackerFactory.apply(attackerLibrary);
 
         for (SignatureGroup group : signatureGroups) {
             boolean positiveBySuperset = skipPositiveSupersets && hasKnownPositiveSubset(group.signature(), knownPositive);
@@ -103,7 +125,7 @@ public final class IBEXTestAdaptiveRunner {
                 stats.relationConflicts.incrementAndGet();
             } else if (positiveBySuperset) {
                 skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, true);
-                reportSequentialProgress(stats, signatureGroups.size());
+            reportSequentialProgress(stats, signatureGroups.size());
                 continue;
             } else if (negativeBySubset) {
                 skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, false);
@@ -111,14 +133,14 @@ public final class IBEXTestAdaptiveRunner {
                 continue;
             }
 
-            executeSignatureGroup(ibexAttacker, tests, ordinalTests, spikeByOrdinal, group, mergedResults, stats, failures);
+            executeSignatureGroup(attacker, tests, ordinalTests, spikeByOrdinal, group, mergedResults, stats, failures);
             GroupLabels labels = labelsForGroup(group, mergedResults);
             if (labels.hasPositive()) {
                 knownPositive.add(group.signature());
             } else if (labels.hasNegative()) {
                 knownNegative.add(group.signature());
             }
-            reportSequentialProgress(stats, signatureGroups.size());
+                reportSequentialProgress(stats, signatureGroups.size());
         }
 
         System.out.println();
@@ -150,7 +172,7 @@ public final class IBEXTestAdaptiveRunner {
     private void reportSequentialProgress(Stats stats, int total) {
         int doneGroups = stats.completedGroups.incrementAndGet();
         if (shouldReportProgress(doneGroups, total)) {
-            System.out.printf("IBEX_TEST adaptive progress: %d of %d signatures, %d RTL executions.%n", doneGroups, total, stats.executed.get());
+            System.out.printf("%s adaptive progress: %d of %d signatures, %d RTL executions.%n", harnessName, doneGroups, total, stats.executed.get());
         }
     }
 
@@ -172,7 +194,7 @@ public final class IBEXTestAdaptiveRunner {
     }
 
     private void executeSignatureGroup(
-            IBEXTestAttackerClient ibexAttacker,
+            AttackerHarnessClient attacker,
             List<TestCase> tests,
             List<TestCase> ordinalTests,
             Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
@@ -201,9 +223,7 @@ public final class IBEXTestAdaptiveRunner {
                 continue;
             }
 
-            List<IBEXTestAttackerClient.IbexAttackerCase> nativeResults = ibexAttacker.runAll(List.of(ordinalTests.get(ordinal)), 10000);
-            IBEXTestAttackerClient.IbexAttackerCase nativeResult = nativeResults.isEmpty() ? null : nativeResults.get(0);
-            SIMULATION_RESULT simulationResult = nativeResult == null ? SIMULATION_RESULT.UNKNOWN : nativeResult.status();
+            SIMULATION_RESULT simulationResult = attacker.run(ordinalTests.get(ordinal), 10000);
             Boolean attackerLabel = switch (simulationResult) {
                 case FAIL -> true;
                 case SUCCESS, FALSE_POSITIVE -> false;

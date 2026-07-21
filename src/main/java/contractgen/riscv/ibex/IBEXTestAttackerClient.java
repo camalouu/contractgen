@@ -4,6 +4,7 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import contractgen.SIMULATION_RESULT;
 import contractgen.TestCase;
+import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.isa.RISCVInstruction;
 import contractgen.riscv.isa.RISCVProgram;
 
@@ -12,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public final class IBEXTestAttackerClient {
+public final class IBEXTestAttackerClient implements AttackerHarnessClient {
     private static final int MAX_INSTR = 2048;
     private static final int NOP = unsignedWord(RISCVInstruction.NOP().toHexEncoding());
 
@@ -68,6 +69,12 @@ public final class IBEXTestAttackerClient {
             out.add(new IbexAttackerCase(ordinal, caseIndices[ordinal], status, status == SIMULATION_RESULT.FAIL, null));
         }
         return out;
+    }
+
+    @Override
+    public SIMULATION_RESULT run(TestCase test, int maxCycles) {
+        List<IbexAttackerCase> results = runAll(List.of(test), maxCycles);
+        return results.isEmpty() ? SIMULATION_RESULT.UNKNOWN : results.get(0).status();
     }
 
     private static void fillProgramImage(RISCVProgram program, int[] image, int offset) {

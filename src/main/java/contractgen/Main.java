@@ -811,7 +811,12 @@ class ReplaySynthesize implements Callable<Integer> {
     }
 }
 
-@Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and IBEX_TEST for attacker distinguishability.")
+enum ReplayAttackerHarness {
+    IBEX_TEST,
+    CVA6_TEST
+}
+
+@Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
 class ReplaySynthesizeSpike implements Callable<Integer> {
     private static final int MAX_FAILURE_INDICES = 10;
 
@@ -841,6 +846,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     @Option(names = {"--ibex-test-lib"}, description = "Path to libcontract_ibex_test_attacker.so. Defaults to CONTRACT_IBEX_TEST_LIB or the IBEX_TEST compilation output.")
     File ibexTestLib;
+
+    @Option(names = {"--cva6-test-lib"}, description = "Path to libcontract_cva6_test_attacker.so. Defaults to CONTRACT_CVA6_TEST_LIB or the CVA6_TEST compilation output.")
+    File cva6TestLib;
+
+    @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
+    ReplayAttackerHarness processor;
 
     @Option(names = {"--spike-isa"}, description = "Spike ISA string", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
@@ -888,17 +899,47 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             ordinalTests.add(new RISCVTestCase(tc.getProgram1(), tc.getProgram2(), tc.getMaxInstructionCount(), tc.getLikelyCTX(), i));
         }
 
-        IBEXTest ibexTest = new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
-        long ibexResolveStart = System.currentTimeMillis();
-        Path ibexTestLibrary = resolveIbexTestLibrary(ibexTest);
-        long ibexResolveTime = System.currentTimeMillis() - ibexResolveStart;
+        RISCVContract contract;
+        String attackerHarnessName = processor.name();
+        long attackerResolveStart = System.currentTimeMillis();
+        IBEXTestAdaptiveRunner.Result adaptiveResult;
+        if (processor == ReplayAttackerHarness.IBEX_TEST) {
+            IBEXTest ibexTest = new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
+            Path ibexTestLibrary = resolveIbexTestLibrary(ibexTest);
+            contract = (RISCVContract) ibexTest.getISA().getContract();
+            long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
+            long attackerStart = System.currentTimeMillis();
+            adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
+                    .run(tests, ordinalTests, spikeByOrdinal);
+            long attackerTime = System.currentTimeMillis() - attackerStart;
+            synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
+            return 0;
+        }
+
+        CVA6Test cva6Test = new CVA6Test(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
+        Path cva6TestLibrary = resolveCva6TestLibrary(cva6Test);
+        contract = (RISCVContract) cva6Test.getISA().getContract();
+        long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
         long attackerStart = System.currentTimeMillis();
-        IBEXTestAdaptiveRunner.Result adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
+        adaptiveResult = new IBEXTestAdaptiveRunner(cva6TestLibrary, "CVA6_TEST", CVA6TestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
                 .run(tests, ordinalTests, spikeByOrdinal);
         long attackerTime = System.currentTimeMillis() - attackerStart;
-        failures.addAll(adaptiveResult.failures());
+        synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
+        return 0;
+    }
 
-        RISCVContract contract = (RISCVContract) ibexTest.getISA().getContract();
+    private void synthesizeAndWrite(
+            RISCVContract contract,
+            List<TestCase> tests,
+            IBEXTestAdaptiveRunner.Result adaptiveResult,
+            List<String> failures,
+            long spikeTime,
+            long attackerResolveTime,
+            long attackerTime,
+            long start,
+            String attackerHarnessName
+    ) {
+        failures.addAll(adaptiveResult.failures());
 
         if (adaptiveResult.stats().failureCount() > 0) {
             throw new IllegalStateException("Cannot synthesize replay contract. Invalid testcase results: "
@@ -938,7 +979,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 StringBuilder sb = new StringBuilder();
                 sb.append("Summary:\n");
                 sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
-                sb.append("\tProcessor: IBEX_TEST\n");
+                sb.append("\tProcessor: ").append(attackerHarnessName).append("\n");
                 sb.append("\tAtom Source: Spike\n");
                 sb.append("\tISA: ").append(isa).append("\n");
                 sb.append("\tTemplate: ").append(template).append("\n");
@@ -946,7 +987,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tThreads: ").append(threads).append("\n");
                 sb.append("\tSource: ").append(testcases.getPath()).append("\n");
                 sb.append("\tSpike Time: ").append(spikeTime).append(" ms\n");
-                sb.append("\tIBEX_TEST Library Time: ").append(ibexResolveTime).append(" ms\n");
+                sb.append("\t").append(attackerHarnessName).append(" Library Time: ").append(attackerResolveTime).append(" ms\n");
                 sb.append("\tAdaptive Attacker Time: ").append(attackerTime).append(" ms\n");
                 sb.append("\tILP Time: ").append(ilpTime).append(" ms\n");
                 sb.append("\tUnique Signatures: ").append(adaptiveResult.uniqueSignatures()).append("\n");
@@ -972,7 +1013,6 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return 0;
     }
 
     private int validateSpikeResults(List<TestCase> tests, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal, List<String> failures) {
@@ -1026,6 +1066,31 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         }
         if (!Files.exists(library)) {
             throw new IllegalStateException("IBEX_TEST attacker shared library not found at " + library);
+        }
+        return library;
+    }
+
+    private Path resolveCva6TestLibrary(CVA6Test cva6Test) {
+        Path library;
+        boolean explicitLibrary = false;
+        if (cva6TestLib != null) {
+            library = cva6TestLib.toPath();
+            explicitLibrary = true;
+        } else {
+            String env = System.getenv("CONTRACT_CVA6_TEST_LIB");
+            if (env != null && !env.isBlank()) {
+                library = Path.of(env);
+                explicitLibrary = true;
+            } else {
+                library = Path.of("/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so");
+            }
+        }
+        if (!explicitLibrary) {
+            System.out.println("Rebuilding CVA6_TEST attacker shared library from the current harness sources.");
+            cva6Test.compile();
+        }
+        if (!Files.exists(library)) {
+            throw new IllegalStateException("CVA6_TEST attacker shared library not found at " + library);
         }
         return library;
     }
