@@ -2,7 +2,16 @@ module top (
 `ifdef USEVERILATOR
     input logic clk,
     output logic finished_o,
-    output logic atk_equiv_o
+    output logic atk_equiv_o,
+    output logic [31:0] retire_count_o,
+    output logic [31:0] fetch_1_count_o,
+    output logic [31:0] fetch_2_count_o,
+    output logic rvfi_valid_1_o,
+    output logic rvfi_valid_2_o,
+    output logic [63:0] rvfi_order_1_o,
+    output logic [63:0] rvfi_order_2_o,
+    output logic [31:0] rvfi_insn_1_o,
+    output logic [31:0] rvfi_insn_2_o
 `endif
 );
 `ifndef USEVERILATOR
@@ -161,6 +170,32 @@ module top (
         .external_perf_i        (16'b0),
         .debug_req_i            (1'b0),
 
+`ifdef RVFI
+        .rvfi_valid             (rvfi_valid_1_o),
+        .rvfi_order             (rvfi_order_1_o),
+        .rvfi_insn              (rvfi_insn_1_o),
+        .rvfi_trap              (),
+        .rvfi_halt              (),
+        .rvfi_intr              (),
+        .rvfi_mode              (),
+        .rvfi_ixl               (),
+        .rvfi_rs1_addr          (),
+        .rvfi_rs2_addr          (),
+        .rvfi_rs3_addr          (),
+        .rvfi_rs1_rdata         (),
+        .rvfi_rs2_rdata         (),
+        .rvfi_rs3_rdata         (),
+        .rvfi_rd_addr           (),
+        .rvfi_rd_wdata          (),
+        .rvfi_pc_rdata          (),
+        .rvfi_pc_wdata          (),
+        .rvfi_mem_addr          (),
+        .rvfi_mem_rmask         (),
+        .rvfi_mem_wmask         (),
+        .rvfi_mem_rdata         (),
+        .rvfi_mem_wdata         (),
+`endif
+
         .fetch_enable_i         (enable_1),
         .alert_major_o          (),
         .alert_minor_o          (),
@@ -209,6 +244,32 @@ module top (
         .external_perf_i        (16'b0),
         .debug_req_i            (1'b0),
 
+`ifdef RVFI
+        .rvfi_valid             (rvfi_valid_2_o),
+        .rvfi_order             (rvfi_order_2_o),
+        .rvfi_insn              (rvfi_insn_2_o),
+        .rvfi_trap              (),
+        .rvfi_halt              (),
+        .rvfi_intr              (),
+        .rvfi_mode              (),
+        .rvfi_ixl               (),
+        .rvfi_rs1_addr          (),
+        .rvfi_rs2_addr          (),
+        .rvfi_rs3_addr          (),
+        .rvfi_rs1_rdata         (),
+        .rvfi_rs2_rdata         (),
+        .rvfi_rs3_rdata         (),
+        .rvfi_rd_addr           (),
+        .rvfi_rd_wdata          (),
+        .rvfi_pc_rdata          (),
+        .rvfi_pc_wdata          (),
+        .rvfi_mem_addr          (),
+        .rvfi_mem_rmask         (),
+        .rvfi_mem_wmask         (),
+        .rvfi_mem_rdata         (),
+        .rvfi_mem_wdata         (),
+`endif
+
         .fetch_enable_i         (enable_2),
         .alert_major_o          (),
         .alert_minor_o          (),
@@ -243,7 +304,10 @@ module top (
         .instr_addr_2_i         (instr_addr_2),
         .enable_1_o             (enable_1),
         .enable_2_o             (enable_2),
-        .finished_o             (finished)
+        .finished_o             (finished),
+        .retire_count_o         (retire_count_o),
+        .fetch_1_count_o        (fetch_1_count_o),
+        .fetch_2_count_o        (fetch_2_count_o)
     );
 
     always @(posedge clk) begin

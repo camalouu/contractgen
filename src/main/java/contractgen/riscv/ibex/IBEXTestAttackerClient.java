@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 
 public final class IBEXTestAttackerClient implements AttackerHarnessClient {
     private static final int MAX_INSTR = 2048;
@@ -20,14 +21,16 @@ public final class IBEXTestAttackerClient implements AttackerHarnessClient {
     private final ContractIbexTestLibrary library;
 
     private interface ContractIbexTestLibrary extends Library {
-        int contract_ibex_test_attacker_batch(
+        int contract_ibex_test_attacker_batch_v4(
                 int caseCount,
                 int maxCycles,
                 int[] caseIndices,
                 int[] maxInstructionCounts,
                 int[] program1,
                 int[] program2,
-                int[] statuses
+                int[] statuses,
+                int[] failureCutoffs,
+                int[] executionCutoffs
         );
     }
 
@@ -44,6 +47,8 @@ public final class IBEXTestAttackerClient implements AttackerHarnessClient {
         int[] program1 = new int[tests.size() * MAX_INSTR];
         int[] program2 = new int[tests.size() * MAX_INSTR];
         int[] statuses = new int[tests.size()];
+        int[] failureCutoffs = new int[tests.size()];
+        int[] executionCutoffs = new int[tests.size()];
         for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
             TestCase test = tests.get(ordinal);
             caseIndices[ordinal] = test.getIndex();
@@ -51,22 +56,33 @@ public final class IBEXTestAttackerClient implements AttackerHarnessClient {
             fillProgramImage((RISCVProgram) test.getProgram1(), program1, ordinal * MAX_INSTR);
             fillProgramImage((RISCVProgram) test.getProgram2(), program2, ordinal * MAX_INSTR);
         }
-        int returnCode = library.contract_ibex_test_attacker_batch(
-                tests.size(),
-                maxCycles,
-                caseIndices,
-                maxInstructionCounts,
-                program1,
-                program2,
-                statuses
-        );
+        int returnCode;
+        try {
+            returnCode = library.contract_ibex_test_attacker_batch_v4(
+                    tests.size(),
+                    maxCycles,
+                    caseIndices,
+                    maxInstructionCounts,
+                    program1,
+                    program2,
+                    statuses,
+                    failureCutoffs,
+                    executionCutoffs
+            );
+        } catch (UnsatisfiedLinkError error) {
+            throw new IllegalStateException("IBEX_TEST attacker shared library is stale: missing "
+                    + "contract_ibex_test_attacker_batch_v4; rebuild the library", error);
+        }
         if (returnCode != 0) {
             throw new IllegalStateException("IBEX_TEST attacker library failed with code " + returnCode);
         }
         List<IbexAttackerCase> out = new ArrayList<>(tests.size());
         for (int ordinal = 0; ordinal < tests.size(); ordinal++) {
             SIMULATION_RESULT status = parseStatus(statuses[ordinal]);
-            out.add(new IbexAttackerCase(ordinal, caseIndices[ordinal], status, status == SIMULATION_RESULT.FAIL, null));
+            Integer failureCutoff = failureCutoffs[ordinal] < 0 ? null : failureCutoffs[ordinal];
+            Integer executionCutoff = executionCutoffs[ordinal] < 0 ? null : executionCutoffs[ordinal];
+            out.add(new IbexAttackerCase(ordinal, caseIndices[ordinal], status,
+                    status == SIMULATION_RESULT.FAIL, failureCutoff, executionCutoff, null));
         }
         return out;
     }
@@ -75,6 +91,22 @@ public final class IBEXTestAttackerClient implements AttackerHarnessClient {
     public SIMULATION_RESULT run(TestCase test, int maxCycles) {
         List<IbexAttackerCase> results = runAll(List.of(test), maxCycles);
         return results.isEmpty() ? SIMULATION_RESULT.UNKNOWN : results.get(0).status();
+    }
+
+    @Override
+    public AttackerResult runDetailed(TestCase test, int maxCycles) {
+        List<IbexAttackerCase> results = runAll(List.of(test), maxCycles);
+        if (results.isEmpty()) {
+            return new AttackerResult(SIMULATION_RESULT.UNKNOWN, OptionalInt.empty(), OptionalInt.empty());
+        }
+        IbexAttackerCase result = results.get(0);
+        OptionalInt cutoff = result.failureCutoff() == null
+                ? OptionalInt.empty()
+                : OptionalInt.of(result.failureCutoff());
+        OptionalInt executionCutoff = result.executionCutoff() == null
+                ? OptionalInt.empty()
+                : OptionalInt.of(result.executionCutoff());
+        return new AttackerResult(result.status(), cutoff, executionCutoff);
     }
 
     private static void fillProgramImage(RISCVProgram program, int[] image, int offset) {
@@ -111,6 +143,8 @@ public final class IBEXTestAttackerClient implements AttackerHarnessClient {
         };
     }
 
-    public record IbexAttackerCase(int ordinal, int caseIndex, SIMULATION_RESULT status, boolean attackerDistinguishable, String error) {
+    public record IbexAttackerCase(int ordinal, int caseIndex, SIMULATION_RESULT status,
+                                   boolean attackerDistinguishable, Integer failureCutoff,
+                                   Integer executionCutoff, String error) {
     }
 }

@@ -54,9 +54,11 @@ public class RISCVTestIterator implements Iterator<TestCase> {
 
     @Override
     public TestCase next() {
-        if (total < count) return null;
+        if (!hasNext()) {
+            throw new java.util.NoSuchElementException();
+        }
         if (chunk.isEmpty())
-            chunk = generator.nextRepetition(startIndex + count + 1);
+            chunk = generator.nextRepetition(startIndex + count);
         count++;
         return chunk.remove(0);
     }

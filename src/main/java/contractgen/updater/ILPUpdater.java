@@ -19,8 +19,55 @@ import java.util.stream.Collectors;
  */
 public class ILPUpdater implements Updater {
 
+    /** Result of the lexicographic contract optimization. */
+    public record Solution(Set<Observation> contract, long falsePositives, int size, Status status) {
+        public Solution {
+            contract = Set.copyOf(contract);
+        }
+
+        public boolean isOptimal() {
+            return status == Status.OPTIMAL;
+        }
+    }
+
+    /** Solver status kept independent of the OR-Tools API. */
+    public enum Status {
+        OPTIMAL,
+        FEASIBLE,
+        INFEASIBLE,
+        ERROR
+    }
+
     @Override
     public Set<Observation> update(Set<Observation> allObservations, List<TestResult> testResults, Set<Observation> oldContract) {
+
+        Solution solution = solve(allObservations, testResults, oldContract, Set.of(), Set.of());
+        if (!solution.isOptimal()) {
+            throw new IllegalStateException("Contract ILP did not finish optimally: " + solution.status());
+        }
+        return solution.contract();
+    }
+
+    /**
+     * Solves the normal two-stage objective with optional atom requirements.
+     * This is also used by refinement analysis to ask counterfactual questions
+     * such as "what is the best contract when this selected atom is absent?".
+     */
+    public Solution solve(
+            Set<Observation> allObservations,
+            List<TestResult> testResults,
+            Set<Observation> oldContract,
+            Set<Observation> required,
+            Set<Observation> forbidden
+    ) {
+        if (!allObservations.containsAll(required) || !allObservations.containsAll(forbidden)) {
+            throw new IllegalArgumentException("Required/forbidden atoms must belong to ALL_ATOMS.");
+        }
+        Set<Observation> overlap = new HashSet<>(required);
+        overlap.retainAll(forbidden);
+        if (!overlap.isEmpty()) {
+            throw new IllegalArgumentException("Atoms cannot be both required and forbidden: " + overlap);
+        }
 
         Map<MPVariable, Double> hint = new HashMap<>();
         List<TestResult> indistinguishable =
@@ -36,7 +83,18 @@ public class ILPUpdater implements Updater {
         for (Observation obs : allObservations) {
             MPVariable var = solver.makeIntVar(0, 1, "S_" + obs.getType().toString() + "_" + obs.getObservation().toString());
             selected_observations.put(obs, var);
-            hint.put(var, oldContract.contains(obs) ? 1.0 : 0.0);
+            double hinted = oldContract.contains(obs) ? 1.0 : 0.0;
+            if (required.contains(obs)) hinted = 1.0;
+            if (forbidden.contains(obs)) hinted = 0.0;
+            hint.put(var, hinted);
+        }
+        for (Observation obs : required) {
+            MPConstraint constraint = solver.makeConstraint(1.0, 1.0, "REQ_" + selected_observations.get(obs).name());
+            constraint.setCoefficient(selected_observations.get(obs), 1.0);
+        }
+        for (Observation obs : forbidden) {
+            MPConstraint constraint = solver.makeConstraint(0.0, 0.0, "FORBID_" + selected_observations.get(obs).name());
+            constraint.setCoefficient(selected_observations.get(obs), 1.0);
         }
 
         Map<Type, Set<Observation>> grouped_observations = new HashMap<>();
@@ -154,7 +212,10 @@ public class ILPUpdater implements Updater {
         entries.stream().map(Map.Entry::getKey).toList().toArray(hint_var);
         hint_val = entries.stream().map(Map.Entry::getValue).mapToDouble(Double::doubleValue).toArray();
         solver.setHint(hint_var, hint_val);
-        solver.solve();
+        MPSolver.ResultStatus primaryStatus = solver.solve();
+        if (primaryStatus != MPSolver.ResultStatus.OPTIMAL && primaryStatus != MPSolver.ResultStatus.FEASIBLE) {
+            return new Solution(Set.of(), 0, 0, mapStatus(primaryStatus));
+        }
 
         hint.clear();
         for (MPVariable var : hint_var) {
@@ -179,7 +240,10 @@ public class ILPUpdater implements Updater {
         entries.stream().map(Map.Entry::getKey).toList().toArray(hint_var);
         hint_val = entries.stream().map(Map.Entry::getValue).mapToDouble(Double::doubleValue).toArray();
         solver.setHint(hint_var, hint_val);
-        solver.solve();
+        MPSolver.ResultStatus secondaryStatus = solver.solve();
+        if (secondaryStatus != MPSolver.ResultStatus.OPTIMAL && secondaryStatus != MPSolver.ResultStatus.FEASIBLE) {
+            return new Solution(Set.of(), Math.round(goal), 0, mapStatus(secondaryStatus));
+        }
 
         Set<Observation> new_contract = new HashSet<>();
         for (Map.Entry<Observation, MPVariable> entry : selected_observations.entrySet()) {
@@ -187,6 +251,18 @@ public class ILPUpdater implements Updater {
                 new_contract.add(entry.getKey());
             }
         }
-        return new_contract;
+        Status status = primaryStatus == MPSolver.ResultStatus.OPTIMAL && secondaryStatus == MPSolver.ResultStatus.OPTIMAL
+                ? Status.OPTIMAL
+                : Status.FEASIBLE;
+        return new Solution(new_contract, Math.round(goal), new_contract.size(), status);
+    }
+
+    private static Status mapStatus(MPSolver.ResultStatus status) {
+        return switch (status) {
+            case OPTIMAL -> Status.OPTIMAL;
+            case FEASIBLE -> Status.FEASIBLE;
+            case INFEASIBLE -> Status.INFEASIBLE;
+            default -> Status.ERROR;
+        };
     }
 }

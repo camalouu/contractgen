@@ -126,17 +126,27 @@ public record RISCVInstruction(RISCV_TYPE type, Integer rd, Integer rs1, Integer
     private String encodeImmediate(Long immediate, RISCV_FORMAT format) {
         return switch (format) {
             case RTYPE -> throw new IllegalArgumentException("RTYPE instructions have no immediate.");
-            case ITYPE, STYPE -> String.format("%12s", Long.toBinaryString(immediate)).replace(' ', '0');
+            case ITYPE, STYPE -> fixedWidthBits(immediate, 12);
             case BTYPE -> {
-                String s = String.format("%13s", Long.toBinaryString(immediate)).replace(' ', '0');
+                String s = fixedWidthBits(immediate, 13);
                 yield s.charAt(0) + s.substring(2, 8) + s.substring(8, 12) + s.charAt(1);
             }
-            case UTYPE -> String.format("%32s", Long.toBinaryString(immediate)).replace(' ', '0').substring(0, 20);
+            case UTYPE -> fixedWidthBits(immediate, 32).substring(0, 20);
             case JTYPE -> {
-                String s = String.format("%21s", Long.toBinaryString(immediate)).replace(' ', '0');
+                String s = fixedWidthBits(immediate, 21);
                 yield s.charAt(0) + s.substring(10, 20) + s.charAt(9) + s.substring(1, 9);
             }
         };
+    }
+
+    /** Returns the low {@code width} bits, including two's-complement encoding for negative values. */
+    private static String fixedWidthBits(long value, int width) {
+        if (width < 1 || width > 63) {
+            throw new IllegalArgumentException("Bit width must be between 1 and 63: " + width);
+        }
+        long mask = (1L << width) - 1;
+        String bits = Long.toBinaryString(value & mask);
+        return StringUtils.expandToLength(bits, width, '0');
     }
 
     public static boolean hasRD(RISCV_TYPE type) {

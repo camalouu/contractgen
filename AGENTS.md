@@ -17,6 +17,7 @@ Use this file as the default operating guide when making changes in this repo.
 - Preserve the research pipeline: test generation -> simulation -> extraction -> contract update/statistics.
 - Treat supported cores as first-class integration targets: Ibex, CVA6, Hazard3, Sodor 2/5, DarkRISCV 2/3.
 - Prefer small, targeted changes. Full end-to-end runs are expensive and can generate very large artifacts.
+- Treat Docker rebuild triggers as expensive changes. Do not casually change or delete the Dockerfile, base-image tags/digests, Compose build settings, or other files that invalidate the Docker build cache. Before making such a change, warn the user that a full Docker rebuild may be required, explain the expected cost/time, and ask for confirmation when the change is not essential. If a rebuild is required, remind the user of the exact command (for example, `docker compose build yosys` or `docker compose up --build`) and do not claim the image was rebuilt unless it was actually run.
 - Do not assume generated JSON/CSV/TXT artifacts belong in version control. `.gitignore` excludes most of them.
 
 ## Key Entry Points
@@ -123,6 +124,14 @@ Do not claim end-to-end validation unless the required simulator/toolchain piece
 - The repo root may contain large generated files from prior experiments. Leave unrelated artifacts alone.
 - `.gitignore` excludes generated `*.json`, `*.csv`, `*.txt`, `*.vcd`, `target/`, and similar outputs.
 - Put new generated results under the existing `results/...` convention unless the task explicitly requires something else.
+
+### Large-Artifact Safety
+
+- Check a generated artifact's size before reading or searching it.
+- Do not recursively run `rg`, `grep`, or similar content searches through directories containing large generated testcase or result files. Restrict searches by path and file type, and exclude generated artifacts explicitly.
+- Prefer streaming parsers and bounded-memory scripts for large JSON files. Do not load multi-gigabyte JSON into Python, `jq`, Java, or another process when a streaming calculation is sufficient.
+- Put temporary filtered files, extracted samples, and one-off analysis outputs under `/tmp` unless the task explicitly requires a persistent repository artifact.
+- Start with metadata, small samples, or targeted fields, and avoid printing large JSON objects or traces to the terminal.
 
 ## Practical Review Checklist
 

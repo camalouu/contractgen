@@ -7,12 +7,16 @@ import com.sun.jna.Pointer;
 import contractgen.riscv.isa.RISCV_TYPE;
 import contractgen.riscv.isa.contract.RISCVObservation;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
+import contractgen.util.Pair;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public final class SpikeAtomClient {
     private final ContractSpikeLibrary library;
@@ -56,21 +60,89 @@ public final class SpikeAtomClient {
             return List.of();
         }
         return response.cases.stream()
-                .map(c -> new SpikeCaseAtoms(c.ordinal, c.case_index, atoms(c.atoms, allowed), c.error))
+                .map(c -> atoms(c, allowed))
                 .toList();
     }
 
-    private static Set<RISCVObservation> atoms(List<SpikeAtom> atoms, Set<RISCV_OBSERVATION_TYPE> allowed) {
-        if (atoms == null) {
-            return Set.of();
+    private static SpikeCaseAtoms atoms(SpikeCase spikeCase, Set<RISCV_OBSERVATION_TYPE> allowed) {
+        Set<RISCVObservation> observations = new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+        Map<RISCVObservation, Integer> firstRetire = new LinkedHashMap<>();
+        Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairs = new java.util.TreeSet<>(instructionPairComparator());
+        Map<Pair<RISCV_TYPE, RISCV_TYPE>, Integer> pairFirstRetire = new LinkedHashMap<>();
+        if (spikeCase.atoms != null) {
+            for (SpikeAtom atom : spikeCase.atoms) {
+                RISCVObservation observation = new RISCVObservation(
+                        RISCV_TYPE.valueOf(atom.type),
+                        RISCV_OBSERVATION_TYPE.valueOf(atom.observation));
+                if (!allowed.contains(observation.observation())) {
+                    continue;
+                }
+                observations.add(observation);
+                if (atom.first_retire != null) {
+                    firstRetire.merge(observation, atom.first_retire, Math::min);
+                }
+            }
         }
-        return atoms.stream()
-                .map(a -> new RISCVObservation(RISCV_TYPE.valueOf(a.type), RISCV_OBSERVATION_TYPE.valueOf(a.observation)))
-                .filter(a -> allowed.contains(a.observation()))
-                .collect(Collectors.toCollection(() -> new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation))));
+        if (spikeCase.instruction_pairs != null) {
+            for (SpikeInstructionPair rawPair : spikeCase.instruction_pairs) {
+                Pair<RISCV_TYPE, RISCV_TYPE> pair = new Pair<>(
+                        RISCV_TYPE.valueOf(rawPair.left), RISCV_TYPE.valueOf(rawPair.right));
+                instructionPairs.add(pair);
+                if (rawPair.first_retire != null) {
+                    pairFirstRetire.merge(pair, rawPair.first_retire, Math::min);
+                }
+            }
+        }
+        return new SpikeCaseAtoms(spikeCase.ordinal, spikeCase.case_index, observations, firstRetire,
+                instructionPairs, pairFirstRetire, spikeCase.error);
     }
 
-    public record SpikeCaseAtoms(int ordinal, int caseIndex, Set<RISCVObservation> atoms, String error) {
+    public record SpikeCaseAtoms(
+            int ordinal,
+            int caseIndex,
+            Set<RISCVObservation> atoms,
+            Map<RISCVObservation, Integer> firstRetire,
+            Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairs,
+            Map<Pair<RISCV_TYPE, RISCV_TYPE>, Integer> pairFirstRetire,
+            String error
+    ) {
+        public SpikeCaseAtoms {
+            Set<RISCVObservation> sortedAtoms = new java.util.TreeSet<>(
+                    Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+            sortedAtoms.addAll(atoms);
+            atoms = Collections.unmodifiableSet(sortedAtoms);
+            firstRetire = Collections.unmodifiableMap(new LinkedHashMap<>(firstRetire));
+            Set<Pair<RISCV_TYPE, RISCV_TYPE>> sortedPairs = new java.util.TreeSet<>(instructionPairComparator());
+            sortedPairs.addAll(instructionPairs);
+            instructionPairs = Collections.unmodifiableSet(sortedPairs);
+            pairFirstRetire = Collections.unmodifiableMap(new LinkedHashMap<>(pairFirstRetire));
+        }
+
+        /** Compatibility constructor for callers that only need the ordinary atom set. */
+        public SpikeCaseAtoms(int ordinal, int caseIndex, Set<RISCVObservation> atoms, String error) {
+            this(ordinal, caseIndex, atoms, Map.of(), Set.of(), Map.of(), error);
+        }
+
+        /** Compatibility constructor for callers with timed atoms but no instruction-pair metadata. */
+        public SpikeCaseAtoms(int ordinal, int caseIndex, Set<RISCVObservation> atoms,
+                              Map<RISCVObservation, Integer> firstRetire, String error) {
+            this(ordinal, caseIndex, atoms, firstRetire, Set.of(), Map.of(), error);
+        }
+
+        public OptionalInt firstRetire(RISCVObservation atom) {
+            Integer value = firstRetire.get(atom);
+            return value == null ? OptionalInt.empty() : OptionalInt.of(value);
+        }
+
+        public OptionalInt firstRetire(Pair<RISCV_TYPE, RISCV_TYPE> pair) {
+            Integer value = pairFirstRetire.get(pair);
+            return value == null ? OptionalInt.empty() : OptionalInt.of(value);
+        }
+    }
+
+    private static Comparator<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairComparator() {
+        return Comparator.comparing((Pair<RISCV_TYPE, RISCV_TYPE> pair) -> pair.left().name())
+                .thenComparing(pair -> pair.right().name());
     }
 
     private static final class SpikeResponse {
@@ -82,11 +154,19 @@ public final class SpikeAtomClient {
         int ordinal;
         int case_index;
         List<SpikeAtom> atoms;
+        List<SpikeInstructionPair> instruction_pairs;
         String error;
     }
 
     private static final class SpikeAtom {
         String type;
         String observation;
+        Integer first_retire;
+    }
+
+    private static final class SpikeInstructionPair {
+        String left;
+        String right;
+        Integer first_retire;
     }
 }

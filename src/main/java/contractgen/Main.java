@@ -32,6 +32,7 @@ import contractgen.riscv.isa.tests.RISCVTestCaseIO;
 import contractgen.riscv.sodor.SODOR_2;
 import contractgen.riscv.sodor.SODOR_5;
 import contractgen.updater.ILPUpdater;
+import contractgen.refinement.RefineZ3;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -54,7 +55,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
+@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, RefineZ3.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -118,7 +119,7 @@ class Synthesize implements Callable<Integer> {
     @Option(names = {"--verilator"}, description = "Use Verilator for simulation. Applies to IBEX.")
     boolean useVerilator = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
@@ -590,7 +591,7 @@ class ExportTests implements Callable<Integer> {
     @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
@@ -868,6 +869,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--skip-negative-subsets"}, description = "Skip a Spike signature as attacker-negative when it is a strict subset of a previously attacker-negative signature.")
     boolean skipNegativeSubsets = false;
 
+    @Option(names = {"--disable-adaptive-skipping"}, description = "Execute the attacker RTL for every testcase; disables exact-signature, threshold, and signature-relation skipping.")
+    boolean disableAdaptiveSkipping = false;
+
     @Override
     public Integer call() {
         if (negativeSignatureThreshold < 0) {
@@ -909,7 +913,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             contract = (RISCVContract) ibexTest.getISA().getContract();
             long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
             long attackerStart = System.currentTimeMillis();
-            adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
+            adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping)
                     .run(tests, ordinalTests, spikeByOrdinal);
             long attackerTime = System.currentTimeMillis() - attackerStart;
             synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
@@ -921,7 +925,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         contract = (RISCVContract) cva6Test.getISA().getContract();
         long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
         long attackerStart = System.currentTimeMillis();
-        adaptiveResult = new IBEXTestAdaptiveRunner(cva6TestLibrary, "CVA6_TEST", CVA6TestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets)
+        adaptiveResult = new IBEXTestAdaptiveRunner(cva6TestLibrary, "CVA6_TEST", CVA6TestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping)
                 .run(tests, ordinalTests, spikeByOrdinal);
         long attackerTime = System.currentTimeMillis() - attackerStart;
         synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
@@ -961,7 +965,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
         long timeElapsed = System.currentTimeMillis() - start;
         System.out.println("\nGeneration time: " + timeElapsed);
-        System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, skippedPositiveSuperset=%d, skippedNegativeSubset=%d, relationConflicts=%d, useSkippedEvidence=%s, negativeThreshold=%d, skipPositiveSupersets=%s, skipNegativeSubsets=%s%n",
+        System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, skippedPositiveSuperset=%d, skippedNegativeSubset=%d, relationConflicts=%d, useSkippedEvidence=%s, negativeThreshold=%d, skipPositiveSupersets=%s, skipNegativeSubsets=%s, disableAdaptiveSkipping=%s%n",
                 adaptiveResult.uniqueSignatures(),
                 adaptiveResult.stats().executed(),
                 adaptiveResult.stats().skippedPositive(),
@@ -972,7 +976,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 useSkippedEvidence,
                 negativeSignatureThreshold,
                 skipPositiveSupersets,
-                skipNegativeSubsets);
+                skipNegativeSubsets,
+                disableAdaptiveSkipping);
         System.out.println(contract);
         if (txt != null) {
             try {
@@ -1001,6 +1006,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tNegative Signature Threshold: ").append(negativeSignatureThreshold).append("\n");
                 sb.append("\tSkip Positive Supersets: ").append(skipPositiveSupersets).append("\n");
                 sb.append("\tSkip Negative Subsets: ").append(skipNegativeSubsets).append("\n");
+                sb.append("\tDisable Adaptive Skipping: ").append(disableAdaptiveSkipping).append("\n");
                 sb.append("\n");
                 sb.append(contract);
                 Files.write(Path.of(txt.getPath()), sb.toString().getBytes());
@@ -1182,7 +1188,7 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
     @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")

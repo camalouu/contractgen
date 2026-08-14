@@ -149,6 +149,9 @@ public final class SpikeAtomParallelRunner {
                     ordinal,
                     result.caseIndex(),
                     result.atoms(),
+                    result.firstRetire(),
+                    result.instructionPairs(),
+                    result.pairFirstRetire(),
                     result.error()
             );
         }

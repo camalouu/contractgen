@@ -29,10 +29,12 @@ struct IbexTestRunResult {
     int case_index = 0;
     IbexTestStatus status = IbexTestStatus::Error;
     bool attacker_distinguishable = false;
+    int failure_cutoff = -1;
+    int execution_cutoff = -1;
     std::string error;
 };
 
-IbexTestStatus contract_ibex_run_case(const IbexTestCaseImage& test_case, int max_cycles);
+IbexTestRunResult contract_ibex_run_case(const IbexTestCaseImage& test_case, int max_cycles);
 const char* contract_ibex_status_name(IbexTestStatus status);
 
 void contract_ibex_load_legacy_dat_files(IbexTestCaseImage& test_case, const std::string& directory);

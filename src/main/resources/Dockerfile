@@ -1,4 +1,4 @@
-FROM ubuntu:latest AS build
+FROM ubuntu:24.04 AS build
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get install -y build-essential clang bison flex libreadline-dev \
@@ -86,7 +86,7 @@ RUN make install
 
 WORKDIR /home/yosys
 
-FROM ubuntu:latest AS main
+FROM ubuntu:24.04 AS main
 
 RUN groupadd -g 1002 yosys
 RUN useradd yosys -u 1002 -g 1002 -m -d /home/yosys -s /bin/bash
@@ -99,8 +99,12 @@ RUN DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt install -y \
         libffi-dev graphviz \
         xdot python3 libftdi-dev gperf \
         libboost-program-options-dev libgmp-dev \
-        curl python3-pip openjdk-25-jre-headless openjdk-25-dbg maven \
+        curl python3-pip python3-venv openjdk-25-jre-headless openjdk-25-dbg maven \
         tcl-dev
+
+RUN python3 -m venv /opt/contractgen-python && \
+    /opt/contractgen-python/bin/pip install --no-cache-dir z3-solver==4.16.0.0
+ENV PATH="/opt/contractgen-python/bin:${PATH}"
 
 COPY --from=build /usr/local/bin /usr/local/bin
 COPY --from=build /usr/local/lib /usr/local/lib

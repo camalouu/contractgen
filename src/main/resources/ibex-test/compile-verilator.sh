@@ -32,6 +32,7 @@ for file in ${directories[*]}; do
     --define=SYNTHESIS \
     --define=CONTRACT \
     --define=USEVERILATOR \
+    --define=RVFI \
     ./core/rtl/*_pkg.sv \
     -I./core/vendor/lowrisc_ip/ip/prim/rtl \
     "$file" \
@@ -83,7 +84,7 @@ cd "$LR_VERIF_OUT_DIR"/ || exit
 # iverilog -o ibex *.v
 
 VERILOG_SOURCES="atk.sv clk_sync.sv control.sv data_mem.sv ibex_alu.v ibex_branch_predict.v ibex_compressed_decoder.v ibex_controller.v ibex_core.v ibex_counter.v ibex_cs_registers.v ibex_csr.v ibex_decoder.v ibex_dummy_instr.v ibex_ex_block.v ibex_fetch_fifo.v ibex_icache.v ibex_id_stage.v ibex_if_stage.v ibex_load_store_unit.v ibex_multdiv_fast.v ibex_multdiv_slow.v ibex_pmp.v ibex_prefetch_buffer.v ibex_register_file_ff.v ibex_wb_stage.v instr_mem.sv tc_clk_gating.sv top.sv"
-VERILATOR_FLAGS="-DUSEVERILATOR -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN --top-module top"
+VERILATOR_FLAGS="-DUSEVERILATOR -DRVFI -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN --top-module top"
 
 # Compatibility executable used by the existing file-based Java harness.
 # It reads init_*.dat/memory_*.dat/count.dat in C++ instead of using $readmemh.

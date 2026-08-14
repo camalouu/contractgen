@@ -197,6 +197,13 @@ public abstract class Contract {
         return current_contract;
     }
 
+    /**
+     * @return All atoms available to the updater for this contract template.
+     */
+    public Set<Observation> getAllAtoms() {
+        return Collections.unmodifiableSet(ALL_ATOMS);
+    }
+
 
     /**
      * @return The number of test results collected so far

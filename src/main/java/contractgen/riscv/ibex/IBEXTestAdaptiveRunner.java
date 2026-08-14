@@ -3,9 +3,11 @@ package contractgen.riscv.ibex;
 import contractgen.SIMULATION_RESULT;
 import contractgen.TestCase;
 import contractgen.riscv.AttackerHarnessClient;
+import contractgen.riscv.isa.RISCV_TYPE;
 import contractgen.riscv.isa.contract.RISCVObservation;
 import contractgen.riscv.isa.contract.RISCVTestResult;
 import contractgen.riscv.isa.spike.SpikeAtomClient;
+import contractgen.util.Pair;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -14,8 +16,10 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public final class IBEXTestAdaptiveRunner {
@@ -29,13 +33,19 @@ public final class IBEXTestAdaptiveRunner {
     private final boolean useSkippedEvidence;
     private final boolean skipPositiveSupersets;
     private final boolean skipNegativeSubsets;
+    private final boolean disableAdaptiveSkipping;
+    private final boolean requireFailureCutoff;
 
     public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence) {
         this(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, false, false);
     }
 
     public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets) {
-        this(ibexTestLibrary, "IBEX_TEST", IBEXTestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets);
+        this(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, false);
+    }
+
+    public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets, boolean disableAdaptiveSkipping) {
+        this(ibexTestLibrary, "IBEX_TEST", IBEXTestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping);
     }
 
     /**
@@ -51,6 +61,24 @@ public final class IBEXTestAdaptiveRunner {
             boolean skipPositiveSupersets,
             boolean skipNegativeSubsets
     ) {
+        this(attackerLibrary, harnessName, attackerFactory, threads, negativeSignatureThreshold,
+                useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, false);
+    }
+
+    /**
+     * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
+     */
+    public IBEXTestAdaptiveRunner(
+            Path attackerLibrary,
+            String harnessName,
+            Function<Path, AttackerHarnessClient> attackerFactory,
+            int threads,
+            int negativeSignatureThreshold,
+            boolean useSkippedEvidence,
+            boolean skipPositiveSupersets,
+            boolean skipNegativeSubsets,
+            boolean disableAdaptiveSkipping
+    ) {
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("negativeSignatureThreshold must be >= 0.");
         }
@@ -62,6 +90,8 @@ public final class IBEXTestAdaptiveRunner {
         this.useSkippedEvidence = useSkippedEvidence;
         this.skipPositiveSupersets = skipPositiveSupersets;
         this.skipNegativeSubsets = skipNegativeSubsets;
+        this.disableAdaptiveSkipping = disableAdaptiveSkipping;
+        this.requireFailureCutoff = "IBEX_TEST".equals(harnessName);
     }
 
     public Result run(
@@ -71,24 +101,30 @@ public final class IBEXTestAdaptiveRunner {
     ) {
         List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal);
         System.out.printf("Running %s adaptive attacker labels for %d cases across %d exact signatures.%n", harnessName, tests.size(), signatureGroups.size());
-        if (skipPositiveSupersets || skipNegativeSubsets) {
+        if (!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets)) {
             return runWithSignatureRelations(tests, ordinalTests, spikeByOrdinal, signatureGroups);
         }
         RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
         Stats stats = new Stats();
         List<String> failures = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger groupCursor = new AtomicInteger();
+        AtomicReference<Throwable> runnerFailure = new AtomicReference<>();
         List<Thread> runners = new ArrayList<>();
         for (int id = 1; id <= threads; id++) {
             runners.add(new Thread(() -> {
-                AttackerHarnessClient attacker = attackerFactory.apply(attackerLibrary);
-                int groupIndex;
-                while ((groupIndex = groupCursor.getAndIncrement()) < signatureGroups.size()) {
-                    executeSignatureGroup(attacker, tests, ordinalTests, spikeByOrdinal, signatureGroups.get(groupIndex), mergedResults, stats, failures);
-                    int doneGroups = stats.completedGroups.incrementAndGet();
-                    if (shouldReportProgress(doneGroups, signatureGroups.size())) {
-                        System.out.printf("%s adaptive progress: %d of %d signatures, %d RTL executions.%n", harnessName, doneGroups, signatureGroups.size(), stats.executed.get());
+                try {
+                    AttackerHarnessClient attacker = attackerFactory.apply(attackerLibrary);
+                    int groupIndex;
+                    while (runnerFailure.get() == null
+                            && (groupIndex = groupCursor.getAndIncrement()) < signatureGroups.size()) {
+                        executeSignatureGroup(attacker, tests, ordinalTests, spikeByOrdinal, signatureGroups.get(groupIndex), mergedResults, stats, failures);
+                        int doneGroups = stats.completedGroups.incrementAndGet();
+                        if (shouldReportProgress(doneGroups, signatureGroups.size())) {
+                            System.out.printf("%s adaptive progress: %d of %d signatures, %d RTL executions.%n", harnessName, doneGroups, signatureGroups.size(), stats.executed.get());
+                        }
                     }
+                } catch (Throwable failure) {
+                    runnerFailure.compareAndSet(null, failure);
                 }
             }, harnessName + "_Adaptive_Replay_Runner_" + id));
         }
@@ -101,6 +137,9 @@ public final class IBEXTestAdaptiveRunner {
                 throw new RuntimeException(e);
             }
         });
+        if (runnerFailure.get() != null) {
+            throw new IllegalStateException(harnessName + " adaptive attacker execution failed", runnerFailure.get());
+        }
         System.out.println();
         return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures));
     }
@@ -164,7 +203,8 @@ public final class IBEXTestAdaptiveRunner {
                 stats.skippedNegativeSubset.incrementAndGet();
             }
             if (useSkippedEvidence) {
-                mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, original.getIndex());
+                mergedResults[ordinal] = new RISCVTestResult(
+                        spikeCase.atoms(), spikeCase.instructionPairs(), attackerLabel, original.getIndex());
             }
         }
     }
@@ -208,22 +248,25 @@ public final class IBEXTestAdaptiveRunner {
         for (int ordinal : group.ordinals()) {
             TestCase original = tests.get(ordinal);
             SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
-            if (positiveSeen) {
+            if (!disableAdaptiveSkipping && positiveSeen) {
                 stats.skippedPositive.incrementAndGet();
                 if (useSkippedEvidence) {
-                    mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), true, original.getIndex());
+                    mergedResults[ordinal] = new RISCVTestResult(
+                            spikeCase.atoms(), spikeCase.instructionPairs(), true, original.getIndex());
                 }
                 continue;
             }
-            if (negativeSignatureThreshold > 0 && negativeCount >= negativeSignatureThreshold) {
+            if (!disableAdaptiveSkipping && negativeSignatureThreshold > 0 && negativeCount >= negativeSignatureThreshold) {
                 stats.skippedNegative.incrementAndGet();
                 if (useSkippedEvidence) {
-                    mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), false, original.getIndex());
+                    mergedResults[ordinal] = new RISCVTestResult(
+                            spikeCase.atoms(), spikeCase.instructionPairs(), false, original.getIndex());
                 }
                 continue;
             }
 
-            SIMULATION_RESULT simulationResult = attacker.run(ordinalTests.get(ordinal), 10000);
+            AttackerHarnessClient.AttackerResult attackerResult = attacker.runDetailed(ordinalTests.get(ordinal), 10000);
+            SIMULATION_RESULT simulationResult = attackerResult.status();
             Boolean attackerLabel = switch (simulationResult) {
                 case FAIL -> true;
                 case SUCCESS, FALSE_POSITIVE -> false;
@@ -234,18 +277,109 @@ public final class IBEXTestAdaptiveRunner {
                 addFailure(stats, failures, original.getIndex() + ": attacker harness status " + simulationResult);
                 continue;
             }
-            if (attackerLabel && spikeCase.atoms().isEmpty()) {
-                addFailure(stats, failures, original.getIndex() + ": attacker-distinguishable but Spike reported no atoms");
+            if (attackerLabel && spikeCase.atoms().isEmpty() && spikeCase.instructionPairs().isEmpty()) {
+                addFailure(stats, failures, original.getIndex()
+                        + ": attacker-distinguishable but Spike reported no evidence");
                 continue;
             }
 
-            mergedResults[ordinal] = new RISCVTestResult(spikeCase.atoms(), Set.of(), attackerLabel, original.getIndex());
+            Set<RISCVObservation> evidenceAtoms = spikeCase.atoms();
+            Set<Pair<RISCV_TYPE, RISCV_TYPE>> evidencePairs = spikeCase.instructionPairs();
+            if (attackerLabel && requireFailureCutoff) {
+                OptionalInt failureCutoff = attackerResult.failureCutoff();
+                if (failureCutoff.isEmpty()) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": attacker-distinguishable but IBEX_TEST reported no failure cutoff");
+                    continue;
+                }
+                if (!spikeCase.firstRetire().keySet().containsAll(spikeCase.atoms())) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": attacker-distinguishable but Spike reported atoms without first-retire metadata");
+                    continue;
+                }
+                if (!spikeCase.pairFirstRetire().keySet().containsAll(spikeCase.instructionPairs())) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": attacker-distinguishable but Spike reported instruction pairs without first-retire metadata");
+                    continue;
+                }
+                evidenceAtoms = atomsAtOrBefore(spikeCase, failureCutoff.getAsInt());
+                evidencePairs = instructionPairsAtOrBefore(spikeCase, failureCutoff.getAsInt());
+                if (evidenceAtoms.isEmpty() && evidencePairs.isEmpty()) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": attacker-distinguishable but no Spike evidence occurs by failure cutoff "
+                            + failureCutoff.getAsInt());
+                    continue;
+                }
+            }
+            if (!attackerLabel && attackerResult.executionCutoff().isPresent()) {
+                int executionCutoff = attackerResult.executionCutoff().getAsInt();
+                if (!spikeCase.firstRetire().keySet().containsAll(spikeCase.atoms())) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": IBEX_TEST reported an execution cutoff but Spike atoms lack first-retire metadata");
+                    continue;
+                }
+                if (!spikeCase.pairFirstRetire().keySet().containsAll(spikeCase.instructionPairs())) {
+                    addFailure(stats, failures, original.getIndex()
+                            + ": IBEX_TEST reported an execution cutoff but Spike instruction pairs lack first-retire metadata");
+                    continue;
+                }
+                evidenceAtoms = atomsAtExecutionBoundary(spikeCase, executionCutoff);
+                evidencePairs = instructionPairsAtOrBefore(spikeCase, executionCutoff);
+            }
+
+            mergedResults[ordinal] = new RISCVTestResult(
+                    evidenceAtoms, evidencePairs, attackerLabel, original.getIndex());
             if (attackerLabel) {
                 positiveSeen = true;
             } else {
                 negativeCount++;
             }
         }
+    }
+
+    static Set<RISCVObservation> atomsAtOrBefore(SpikeAtomClient.SpikeCaseAtoms spikeCase, int cutoff) {
+        Set<RISCVObservation> filtered = observationSet(Set.of());
+        for (RISCVObservation atom : spikeCase.atoms()) {
+            if (spikeCase.firstRetire(atom).isPresent()
+                    && spikeCase.firstRetire(atom).getAsInt() <= cutoff) {
+                filtered.add(atom);
+            }
+        }
+        return Collections.unmodifiableSet(filtered);
+    }
+
+    static Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairsAtOrBefore(
+            SpikeAtomClient.SpikeCaseAtoms spikeCase, int cutoff) {
+        Set<Pair<RISCV_TYPE, RISCV_TYPE>> filtered = new java.util.HashSet<>();
+        for (Pair<RISCV_TYPE, RISCV_TYPE> pair : spikeCase.instructionPairs()) {
+            if (spikeCase.firstRetire(pair).isPresent()
+                    && spikeCase.firstRetire(pair).getAsInt() <= cutoff) {
+                filtered.add(pair);
+            }
+        }
+        return Collections.unmodifiableSet(filtered);
+    }
+
+    static Set<RISCVObservation> atomsAtExecutionBoundary(
+            SpikeAtomClient.SpikeCaseAtoms spikeCase, int cutoff) {
+        Set<RISCVObservation> filtered = observationSet(Set.of());
+        for (RISCVObservation atom : spikeCase.atoms()) {
+            OptionalInt firstRetire = spikeCase.firstRetire(atom);
+            if (firstRetire.isEmpty()) {
+                continue;
+            }
+            // Once both RTL paths are in the terminal NOP suffix, structural
+            // and control evidence cannot be new. Dependency observations can
+            // still refer to one of the four preceding retired instructions.
+            boolean nopDependencyTail = atom.type() == RISCV_TYPE.ADDI
+                    && (atom.observation().name().startsWith("RAW_")
+                    || atom.observation().name().startsWith("WAW_"))
+                    && firstRetire.getAsInt() <= cutoff + 4;
+            if (firstRetire.getAsInt() <= cutoff || nopDependencyTail) {
+                filtered.add(atom);
+            }
+        }
+        return Collections.unmodifiableSet(filtered);
     }
 
     private static List<SignatureGroup> groupBySignature(int total, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal) {

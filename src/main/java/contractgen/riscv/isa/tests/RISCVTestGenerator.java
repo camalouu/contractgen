@@ -8,6 +8,7 @@ import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
 import contractgen.util.Pair;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -183,17 +184,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         for (RISCV_TYPE type : types) {
             Map<Integer, Integer> registers = randomRegisters();
             RISCVInstruction instruction = randomInstructionFromType(type);
-            List<RISCVInstruction> sharedSuffix = randomSuffix ? randomSequence(r.nextInt(5, 25)) : List.of(
-                    RISCVInstruction.NOP(),
-                    RISCVInstruction.NOP(),
-                    RISCVInstruction.NOP(),
-                    RISCVInstruction.NOP(),
-                    RISCVInstruction.NOP()
-            );
-            if (!allow_misaligned_memory) {
-                sharedSuffix = alignMemoryAddresses(sharedSuffix);
-            }
-            
+
             List<RISCVInstruction> reset = new ArrayList<>();
             if (reps > 1) {
                 for (int i = 1; i < NUMBER_REGISTERS; i++) {
@@ -211,7 +202,6 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 boolean valid = true;
                 
                 for (int i = 0; i < reps; i++) {
-                    List<RISCVInstruction> suffix = sharedSuffix;
                     List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
                     
                     if (!allow_misaligned_memory) {
@@ -236,6 +226,10 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                             insertAtSecondToLast(targetInstruction.left(), RISCVInstruction.ANDI(targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), MAX_IMM_I - 4)), 
                             insertAtSecondToLast(targetInstruction.right(), RISCVInstruction.ANDI(targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), MAX_IMM_I - 4)));
                     }
+
+                    List<RISCVInstruction> suffix = randomSuffix
+                            ? safeRandomSequence(r.nextInt(5, 25), targetInstruction.left(), targetInstruction.right())
+                            : nopSequence(5);
 
                     if (resetSequence && i > 0) {
                         p1.addAll(reset);
@@ -499,6 +493,72 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             result.add(instruction);
         }
         return result;
+    }
+
+    /**
+     * Generates a shared suffix that cannot introduce memory accesses or change
+     * control flow. The suffix only uses non-zero registers that neither target
+     * sequence writes, so a value difference created by the target is not
+     * consumed or overwritten by the suffix. This also prevents dependency
+     * observations at the target/suffix boundary from matching a target
+     * destination register on only one side.
+     *
+     * <p>If the target itself contains a control-flow instruction, subsequent
+     * dynamic instructions are not guaranteed to stay synchronized. In that
+     * case the safest suffix is NOP-only.</p>
+     */
+    List<RISCVInstruction> safeRandomSequence(
+            int size,
+            List<RISCVInstruction> target1,
+            List<RISCVInstruction> target2
+    ) {
+        if (Stream.concat(target1.stream(), target2.stream()).anyMatch(RISCVInstruction::isCONTROL)) {
+            return nopSequence(size);
+        }
+
+        Set<Integer> writtenByTarget = Stream.concat(target1.stream(), target2.stream())
+                .filter(RISCVInstruction::hasRD)
+                .map(RISCVInstruction::rd)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<Integer> safeRegisters = Stream.iterate(1, register -> register + 1)
+                .limit(NUMBER_REGISTERS - 1L)
+                .filter(register -> !writtenByTarget.contains(register))
+                .toList();
+        List<RISCV_TYPE> safeTypes = types.stream()
+                .filter(candidate -> !RISCVInstruction.isMEM(candidate))
+                .filter(candidate -> !RISCVInstruction.isCONTROL(candidate))
+                .toList();
+
+        if (safeRegisters.isEmpty() || safeTypes.isEmpty()) {
+            return nopSequence(size);
+        }
+
+        List<RISCVInstruction> result = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            RISCV_TYPE type = safeTypes.get(r.nextInt(safeTypes.size()));
+            RISCVInstruction instruction = randomInstructionFromType(type);
+            if (instruction.hasRD()) {
+                instruction = instruction.cloneAlteringRD(randomElement(safeRegisters));
+            }
+            if (instruction.hasRS1()) {
+                instruction = instruction.cloneAlteringRS1(randomElement(safeRegisters));
+            }
+            if (instruction.hasRS2()) {
+                instruction = instruction.cloneAlteringRS2(randomElement(safeRegisters));
+            }
+            result.add(instruction);
+        }
+        return result;
+    }
+
+    private int randomElement(List<Integer> values) {
+        return values.get(r.nextInt(values.size()));
+    }
+
+    private static List<RISCVInstruction> nopSequence(int size) {
+        return Stream.generate(RISCVInstruction::NOP).limit(size).toList();
     }
 
     /**
