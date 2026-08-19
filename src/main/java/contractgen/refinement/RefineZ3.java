@@ -41,12 +41,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 /** Refines an existing result with Z3-generated ambiguity-separating evidence. */
 @Command(name = "refine_z3", description = "Generate ambiguity-separating tests with Z3, validate atoms with Spike, execute Ibex RTL, and update the contract.")
 public final class RefineZ3 implements Callable<Integer> {
-    private static final int PROTOCOL_VERSION = 2;
+    private static final int PROTOCOL_VERSION = 4;
     private static final int PROGRAM_LENGTH = 1;
     private static final int TRACE_LENGTH = 1;
     private static final int CODE_BASE = 0x100;
@@ -67,20 +66,11 @@ public final class RefineZ3 implements Callable<Integer> {
     @Option(names = "--max-tests", defaultValue = "50", description = "Maximum number of Spike-validated tests executed on RTL")
     int maxTests;
 
-    @Option(names = "--models-per-query", defaultValue = "1", description = "Maximum Z3 seed models per ambiguity query")
-    int modelsPerQuery;
-
-    @Option(names = "--mutations-per-model", defaultValue = "8", description = "Maximum Java variants per Z3 seed (identity included)")
-    int mutationsPerModel;
-
-    @Option(names = "--solver-timeout-ms", defaultValue = "30000", description = "Z3 timeout per solver check")
+    @Option(names = "--solver-timeout-ms", defaultValue = "300000", description = "Z3 timeout per ambiguity query")
     int solverTimeoutMs;
 
     @Option(names = "--max-cycles", defaultValue = "10000", description = "Ibex RTL cycle limit per testcase")
     int maxCycles;
-
-    @Option(names = "--seed", defaultValue = "0", description = "Z3 random seed")
-    long seed;
 
     @Option(names = "--python", defaultValue = "python3", description = "Python executable")
     String python;
@@ -121,8 +111,7 @@ public final class RefineZ3 implements Callable<Integer> {
                 TRACE_LENGTH,
                 CODE_BASE,
                 solverTimeoutMs,
-                seed,
-                z3CandidateBudget(queries.size()),
+                Math.min(maxTests, queries.size()),
                 queries
         );
         Path requestPath = artifactDirectory.resolve("z3-queries.json");
@@ -192,8 +181,6 @@ public final class RefineZ3 implements Callable<Integer> {
                 "size", analysis.baseline().size()));
         report.put("ambiguities", analysis.alternatives().size());
         report.put("queries", queries.size());
-        report.put("z3Seeds", response.candidates().size());
-        report.put("generatedVariants", generated.size());
         report.put("z3Candidates", generated.size());
         report.put("spikeAccepted", validation.accepted().size());
         report.put("spikeRejected", validation.rejected());
@@ -216,9 +203,8 @@ public final class RefineZ3 implements Callable<Integer> {
     }
 
     private void validateOptions() {
-        if (threads < 1 || maxTests < 0 || modelsPerQuery < 1 || mutationsPerModel < 1
-                || solverTimeoutMs < 1 || maxCycles < 1) {
-            throw new IllegalArgumentException("threads/models/mutations/timeout/cycles must be positive and max-tests must be non-negative");
+        if (threads < 1 || maxTests < 0 || solverTimeoutMs < 1 || maxCycles < 1) {
+            throw new IllegalArgumentException("threads/timeout/cycles must be positive and max-tests must be non-negative");
         }
         if (!results.isFile()) {
             throw new IllegalArgumentException("Results file does not exist: " + results);
@@ -244,28 +230,31 @@ public final class RefineZ3 implements Callable<Integer> {
     private List<Query> buildQueries(ContractAmbiguityAnalyzer.Analysis analysis) {
         List<Query> out = new ArrayList<>();
         for (ContractAmbiguityAnalyzer.Alternative alternative : analysis.alternatives()) {
-            List<RISCVObservation> targets = Stream.concat(alternative.removed().stream(), alternative.added().stream())
+            List<RISCVObservation> removed = alternative.removed().stream()
                     .map(atom -> (RISCVObservation) atom)
                     .filter(RISCVObservation::isApplicable)
                     .filter(atom -> !isStructural(atom.observation()))
                     .filter(atom -> !isDependency(atom.observation()))
-                    .sorted(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation))
+                    .sorted(Comparator.comparing(RISCVObservation::type)
+                            .thenComparing(RISCVObservation::observation))
                     .toList();
-            for (RISCVObservation target : targets) {
-                List<String> equal = Stream.concat(analysis.baseline().contract().stream(), alternative.contract().stream())
-                        .map(atom -> (RISCVObservation) atom)
-                        .filter(atom -> atom.type() == target.type())
-                        .filter(atom -> atom.observation() != target.observation())
-                        .filter(RISCVObservation::isApplicable)
-                        .map(atom -> atom.observation().name())
-                        .distinct()
-                        .sorted()
-                        .toList();
-                for (String direction : List.of("ascending", "descending")) {
-                    String id = alternative.id() + "-" + target.type().name() + "-"
-                            + target.observation().name() + "-" + direction;
-                    out.add(new Query(id, alternative.id(), direction, target.type().name(),
-                            target.observation().name(), 0, equal, modelsPerQuery));
+            List<RISCVObservation> added = alternative.added().stream()
+                    .map(atom -> (RISCVObservation) atom)
+                    .filter(RISCVObservation::isApplicable)
+                    .filter(atom -> !isStructural(atom.observation()))
+                    .filter(atom -> !isDependency(atom.observation()))
+                    .sorted(Comparator.comparing(RISCVObservation::type)
+                            .thenComparing(RISCVObservation::observation))
+                    .toList();
+            for (RISCVObservation oldAtom : removed) {
+                for (RISCVObservation newAtom : added) {
+                    if (oldAtom.type() != newAtom.type()) {
+                        continue;
+                    }
+                    String id = alternative.id() + "-" + oldAtom.type().name() + "-"
+                            + oldAtom.observation().name() + "-xor-" + newAtom.observation().name();
+                    out.add(new Query(id, alternative.id(), oldAtom.type().name(),
+                            oldAtom.observation().name(), newAtom.observation().name(), 0));
                 }
             }
         }
@@ -286,15 +275,6 @@ public final class RefineZ3 implements Callable<Integer> {
         ).contains(observation);
     }
 
-    private int z3CandidateBudget(int queryCount) {
-        if (maxTests == 0) {
-            return 0;
-        }
-        int variants = Math.max(1, mutationsPerModel);
-        int desiredSeeds = (int) Math.ceil((maxTests * 4.0) / variants);
-        return Math.max(queryCount, desiredSeeds);
-    }
-
     private Response runBridge(Path request, Path response, Path log, int queryCount) throws Exception {
         Path bridge = generatorDir.toPath().resolve("refinement_bridge.py");
         if (!Files.isRegularFile(bridge)) {
@@ -309,7 +289,8 @@ public final class RefineZ3 implements Callable<Integer> {
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile())
                 .start();
-        long totalSeconds = Math.max(60L, (long) Math.ceil(queryCount * solverTimeoutMs / 1000.0) + 60L);
+        long totalSeconds = Math.max(60L,
+                (long) Math.ceil(queryCount * solverTimeoutMs / 1000.0) + 60L);
         if (!process.waitFor(totalSeconds, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             throw new IllegalStateException("Z3 bridge timed out after " + Duration.ofSeconds(totalSeconds));
@@ -321,7 +302,7 @@ public final class RefineZ3 implements Callable<Integer> {
     }
 
     private List<CandidateTest> decodeCandidates(List<Candidate> candidates, int firstIndex) {
-        List<CandidateTest> out = new ArrayList<>(candidates.size() * mutationsPerModel);
+        List<CandidateTest> out = new ArrayList<>(candidates.size());
         int index = firstIndex;
         for (Candidate candidate : candidates) {
             List<RISCVInstruction> program1 = parseProgram(candidate.program1(), candidate.queryId());
@@ -333,20 +314,11 @@ public final class RefineZ3 implements Callable<Integer> {
                     || !program1.get(0).type().name().equals(candidate.targetType())) {
                 throw new IllegalArgumentException("Query " + candidate.queryId() + " changed the target instruction type");
             }
-            RefinementTestMutator.Seed seed = new RefinementTestMutator.Seed(
+            RefinementTestMaterializer.Seed seed = new RefinementTestMaterializer.Seed(
                     program1, integerRegisters(candidate.registers1()),
                     program2, integerRegisters(candidate.registers2()));
-            List<RefinementTestMutator.Variant> variants = RefinementTestMutator.variants(
-                    seed, mutationsPerModel, index);
-            for (RefinementTestMutator.Variant variant : variants) {
-                Candidate mutated = new Candidate(
-                        candidate.queryId(), candidate.alternativeId(), candidate.direction(), candidate.modelOrdinal(),
-                        candidate.targetType(), candidate.targetObservation(), variant.mutation(),
-                        candidate.registers1(), candidate.program1(), candidate.registers2(), candidate.program2(),
-                        variant.test().getMaxInstructionCount());
-                out.add(new CandidateTest(mutated, variant.test()));
-            }
-            index += variants.size();
+            RISCVTestCase test = RefinementTestMaterializer.materialize(seed, index++);
+            out.add(new CandidateTest(candidate, test));
         }
         return out;
     }
@@ -384,14 +356,6 @@ public final class RefineZ3 implements Callable<Integer> {
         Map<String, ContractAmbiguityAnalyzer.Alternative> alternatives = new HashMap<>();
         analysis.alternatives().forEach(alternative -> alternatives.put(alternative.id(), alternative));
         List<Accepted> accepted = new ArrayList<>();
-        Map<String, Set<RISCVObservation>> seedSignatures = new HashMap<>();
-        for (int ordinal = 0; ordinal < candidates.size(); ordinal++) {
-            CandidateTest candidate = candidates.get(ordinal);
-            SpikeAtomClient.SpikeCaseAtoms spike = byOrdinal.get(ordinal);
-            if ("identity".equals(candidate.candidate().mutation()) && spike != null && spike.error() == null) {
-                seedSignatures.put(seedKey(candidate.candidate()), spike.atoms());
-            }
-        }
         int rejected = 0;
         for (int ordinal = 0; ordinal < candidates.size(); ordinal++) {
             CandidateTest candidate = candidates.get(ordinal);
@@ -401,16 +365,7 @@ public final class RefineZ3 implements Callable<Integer> {
                 rejected++;
                 continue;
             }
-            Set<RISCVObservation> seedSignature = seedSignatures.get(seedKey(candidate.candidate()));
-            if (seedSignature == null || !seedSignature.equals(spike.atoms())
-                    || spike.atoms().stream().anyMatch(atom -> isStructural(atom.observation()))) {
-                rejected++;
-                continue;
-            }
-            RISCVObservation target = new RISCVObservation(
-                    contractgen.riscv.isa.RISCV_TYPE.valueOf(candidate.candidate().targetType()),
-                    RISCV_OBSERVATION_TYPE.valueOf(candidate.candidate().targetObservation()));
-            if (!spike.atoms().contains(target)) {
+            if (spike.atoms().stream().anyMatch(atom -> isStructural(atom.observation()))) {
                 rejected++;
                 continue;
             }
@@ -429,14 +384,10 @@ public final class RefineZ3 implements Callable<Integer> {
         return new Validation(List.copyOf(accepted), rejected);
     }
 
-    private static String seedKey(Candidate candidate) {
-        return candidate.queryId() + ":" + candidate.modelOrdinal();
-    }
-
     private static CandidateProvenance provenance(Candidate candidate) {
         return new CandidateProvenance(
-                candidate.queryId(), candidate.alternativeId(), candidate.direction(), candidate.modelOrdinal(),
-                candidate.targetType(), candidate.targetObservation(), candidate.mutation());
+                candidate.queryId(), candidate.alternativeId(), candidate.targetType(),
+                candidate.removedObservation(), candidate.addedObservation());
     }
 
     private List<RtlEvidence> runIbex(List<Accepted> accepted, Set<RISCV_OBSERVATION_TYPE> allowed) {
@@ -502,8 +453,7 @@ public final class RefineZ3 implements Callable<Integer> {
                 + "==============\n"
                 + "Alternatives: " + report.get("ambiguities") + "\n"
                 + "Queries: " + report.get("queries") + "\n"
-                + "Z3 seeds: " + report.get("z3Seeds") + "\n"
-                + "Generated variants: " + report.get("generatedVariants") + "\n"
+                + "Z3 candidates: " + report.get("z3Candidates") + "\n"
                 + "Spike accepted: " + report.get("spikeAccepted") + "\n"
                 + "RTL evidence added: " + report.get("evidenceAdded") + "\n"
                 + "Contract changed: " + report.get("contractChanged") + "\n\n"
@@ -517,7 +467,6 @@ public final class RefineZ3 implements Callable<Integer> {
             int traceLength,
             int codeBase,
             int solverTimeoutMs,
-            long seed,
             int maxCandidates,
             List<Query> queries
     ) {}
@@ -525,12 +474,10 @@ public final class RefineZ3 implements Callable<Integer> {
     private record Query(
             String id,
             String alternativeId,
-            String direction,
             String targetType,
-            String targetObservation,
-            int targetStep,
-            List<String> equalObservations,
-            int maxModels
+            String removedObservation,
+            String addedObservation,
+            int targetStep
     ) {}
 
     private record Response(int protocolVersion, List<Candidate> candidates, List<QueryResult> queryResults) {
@@ -543,11 +490,9 @@ public final class RefineZ3 implements Callable<Integer> {
     private record Candidate(
             String queryId,
             String alternativeId,
-            String direction,
-            int modelOrdinal,
             String targetType,
-            String targetObservation,
-            String mutation,
+            String removedObservation,
+            String addedObservation,
             Map<String, Integer> registers1,
             List<String> program1,
             Map<String, Integer> registers2,
@@ -555,15 +500,21 @@ public final class RefineZ3 implements Callable<Integer> {
             int maxInstructionCount
     ) {}
 
-    private record QueryResult(String queryId, String status, int models, List<String> checks, long durationMs, String error) {}
+    private record QueryResult(
+            String queryId,
+            String status,
+            int models,
+            String check,
+            String reasonUnknown,
+            long durationMs,
+            String error
+    ) {}
     private record CandidateProvenance(
             String queryId,
             String alternativeId,
-            String direction,
-            int modelOrdinal,
             String targetType,
-            String targetObservation,
-            String mutation
+            String removedObservation,
+            String addedObservation
     ) {}
     private record CandidateManifest(int testIndex, CandidateProvenance provenance) {}
     private record CandidateTest(Candidate candidate, RISCVTestCase test) {}

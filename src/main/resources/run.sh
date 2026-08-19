@@ -6,7 +6,7 @@ mvn clean package
 
 platform="IBEX"
 # platform="CVA6"
-count=5000
+count=8800
 reps=1
 
 json_out="/home/yosys/project/${platform,,}-${count}-full-results.json"
@@ -15,7 +15,7 @@ txt_out="/home/yosys/project/${platform,,}-${count}-full-results.txt"
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synthesize \
 #   -p "$platform" \
 #   -i BASE,M \
-#   -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
+#   -c BASE,ALIGNED,BRANCH,DEPENDENCIES \
 #   -n "$count" \
 #   -t 8 \
 #   -s 51 \
@@ -30,37 +30,37 @@ txt_out="/home/yosys/project/${platform,,}-${count}-full-results.txt"
   #
   #
 
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main export_tests \
-  -p "$platform" \
-  -c BASE,ALIGNED,BRANCH \
-  -i BASE,M \
-  -n "$count" \
-  -t 8 \
-  -s 58 \
-  -o "${count}-${platform}-full.json" \
-  --verilator \
-  --random-suffix \
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main export_tests \
+#   -p "$platform" \
+#   -c BASE,ALIGNED,BRANCH \
+#   -i BASE,M \
+#   -n "$count" \
+#   -t 8 \
+#   -s 58 \
+#   -o "${count}-${platform}-full.json" \
+#   --verilator \
+#   --random-suffix \
 #   --results-output "${count}-${platform}-fullvalue-results.json" \
   # --reps 3
 #
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
--p "$platform" \
--i BASE,M \
--c BASE,ALIGNED,BRANCH \
--t 8 \
--e "${count}-${platform}-full.json" \
--o "${count}-${platform}-full-replay-results.json" \
---txt "${count}-${platform}-full-replay-results.txt" \
---verilator 
-
-java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_spike \
--i BASE,M \
--c BASE,ALIGNED,BRANCH \
--t 8 \
--e "${count}-${platform}-full.json" \
--o "${count}-${platform}-full-replayspike-results.json" \
---txt "${count}-${platform}-full-replayspike-results.txt" \
---disable-adaptive-skipping
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize \
+# -p "$platform" \
+# -i BASE,M \
+# -c BASE,ALIGNED,BRANCH \
+# -t 8 \
+# -e "${count}-${platform}-full.json" \
+# -o "${count}-${platform}-full-replay-results.json" \
+# --txt "${count}-${platform}-full-replay-results.txt" \
+# --verilator
+#
+# java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_spike \
+# -i BASE,M \
+# -c BASE,ALIGNED,BRANCH \
+# -t 8 \
+# -e "${count}-${platform}-full.json" \
+# -o "${count}-${platform}-full-replayspike-results.json" \
+# --txt "${count}-${platform}-full-replayspike-results.txt" \
+# --disable-adaptive-skipping
 # --skip-negative-subsets \
 # --skip-positive-supersets \
 # --use-skipped-evidence \
@@ -130,16 +130,15 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main replay_synthesize_
 #     exit 1
 # fi
 
-# refinement_python="${CONTRACTGEN_PYTHON:-/opt/contractgen-python/bin/python}"
-# java --enable-native-access=ALL-UNNAMED \
-#     -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main refine_z3 \
-#     --results "filtered-nodep-500k.json" \
-#     --output "refined-results-1000maxtests.json" \
-#     --artifacts "refined-artifacts-1000maxtests" \
-#     --threads 8 \
-#     --max-tests 1000 \
-#     --models-per-query 100 \
-#     --solver-timeout-ms 30000 \
-#     --python "$refinement_python" \
-#     --generator-dir /home/yosys/project/abstraction-guided-test-case-generation \
-#     --spike-lib /home/yosys/project/riscv-isa-sim/build/libcontract_spike_atom.so
+refinement_python="${CONTRACTGEN_PYTHON:-/opt/contractgen-python/bin/python}"
+java --enable-native-access=ALL-UNNAMED \
+    -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main refine_z3 \
+    --results "filtered-nodep-500k.json" \
+    --output "refined-results-500k.json" \
+    --artifacts "refined-artifacts-500k" \
+    --threads 8 \
+    --max-tests 1000 \
+    --solver-timeout-ms 300000 \
+    --python "$refinement_python" \
+    --generator-dir /home/yosys/project/abstraction-guided-test-case-generation \
+    --spike-lib /home/yosys/project/riscv-isa-sim/build/libcontract_spike_atom.so
