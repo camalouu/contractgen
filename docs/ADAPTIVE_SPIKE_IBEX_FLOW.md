@@ -9,7 +9,15 @@ The updated path decouples:
 - atom distinguishability: computed with the adapted Spike shared library
 - attacker distinguishability: computed with the simplified IBEX_TEST Verilator shared library
 
-The main command using this path is `replay_synthesize_spike`.
+`synth_new -p IBEX_TEST` generates tests and runs this path directly.
+`replay_synthesize_spike -p IBEX_TEST` applies the same path to an exported
+testcase JSON file. The legacy `synthesize -p IBEX` command does not use Spike
+or this attacker-only harness.
+
+Every `synth_new` run also exports its exact generated testcase set in the
+same JSON format as `export_tests`. By default, an output `results/run.json`
+produces `results/run-testcases.json`; use `--testcases-output` to override the
+path. The testcase file is written before Spike or RTL execution begins.
 
 ## Spike Atom Extraction
 
@@ -48,7 +56,7 @@ With `-t 1`, Spike uses the shared library directly in the main JVM. With more t
 Java entry points:
 
 - `IBEXTestAttackerClient`
-- `IBEXTestAdaptiveRunner`
+- `AdaptiveAttackerRunner`
 
 Native entry point:
 

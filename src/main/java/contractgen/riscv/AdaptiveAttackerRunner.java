@@ -1,8 +1,7 @@
-package contractgen.riscv.ibex;
+package contractgen.riscv;
 
 import contractgen.SIMULATION_RESULT;
 import contractgen.TestCase;
-import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.isa.RISCV_TYPE;
 import contractgen.riscv.isa.contract.RISCVObservation;
 import contractgen.riscv.isa.contract.RISCVTestResult;
@@ -22,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-public final class IBEXTestAdaptiveRunner {
+public final class AdaptiveAttackerRunner {
     private static final int MAX_FAILURES = 10;
 
     private final Path attackerLibrary;
@@ -36,42 +35,14 @@ public final class IBEXTestAdaptiveRunner {
     private final boolean disableAdaptiveSkipping;
     private final boolean requireFailureCutoff;
 
-    public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence) {
-        this(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, false, false);
-    }
-
-    public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets) {
-        this(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, false);
-    }
-
-    public IBEXTestAdaptiveRunner(Path ibexTestLibrary, int threads, int negativeSignatureThreshold, boolean useSkippedEvidence, boolean skipPositiveSupersets, boolean skipNegativeSubsets, boolean disableAdaptiveSkipping) {
-        this(ibexTestLibrary, "IBEX_TEST", IBEXTestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping);
-    }
-
     /**
      * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
      */
-    public IBEXTestAdaptiveRunner(
+    public AdaptiveAttackerRunner(
             Path attackerLibrary,
             String harnessName,
             Function<Path, AttackerHarnessClient> attackerFactory,
-            int threads,
-            int negativeSignatureThreshold,
-            boolean useSkippedEvidence,
-            boolean skipPositiveSupersets,
-            boolean skipNegativeSubsets
-    ) {
-        this(attackerLibrary, harnessName, attackerFactory, threads, negativeSignatureThreshold,
-                useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, false);
-    }
-
-    /**
-     * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
-     */
-    public IBEXTestAdaptiveRunner(
-            Path attackerLibrary,
-            String harnessName,
-            Function<Path, AttackerHarnessClient> attackerFactory,
+            boolean requireFailureCutoff,
             int threads,
             int negativeSignatureThreshold,
             boolean useSkippedEvidence,
@@ -91,7 +62,7 @@ public final class IBEXTestAdaptiveRunner {
         this.skipPositiveSupersets = skipPositiveSupersets;
         this.skipNegativeSubsets = skipNegativeSubsets;
         this.disableAdaptiveSkipping = disableAdaptiveSkipping;
-        this.requireFailureCutoff = "IBEX_TEST".equals(harnessName);
+        this.requireFailureCutoff = requireFailureCutoff;
     }
 
     public Result run(
@@ -164,11 +135,11 @@ public final class IBEXTestAdaptiveRunner {
                 stats.relationConflicts.incrementAndGet();
             } else if (positiveBySuperset) {
                 skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, true);
-            reportSequentialProgress(stats, signatureGroups.size());
+                reportSequentialProgress(stats, signatureGroups.size());
                 continue;
             } else if (negativeBySubset) {
                 skipRelationGroup(tests, spikeByOrdinal, group, mergedResults, stats, false);
-                reportSequentialProgress(stats, signatureGroups.size());
+            reportSequentialProgress(stats, signatureGroups.size());
                 continue;
             }
 
@@ -289,7 +260,7 @@ public final class IBEXTestAdaptiveRunner {
                 OptionalInt failureCutoff = attackerResult.failureCutoff();
                 if (failureCutoff.isEmpty()) {
                     addFailure(stats, failures, original.getIndex()
-                            + ": attacker-distinguishable but IBEX_TEST reported no failure cutoff");
+                            + ": attacker-distinguishable but " + harnessName + " reported no failure cutoff");
                     continue;
                 }
                 if (!spikeCase.firstRetire().keySet().containsAll(spikeCase.atoms())) {
@@ -315,12 +286,12 @@ public final class IBEXTestAdaptiveRunner {
                 int executionCutoff = attackerResult.executionCutoff().getAsInt();
                 if (!spikeCase.firstRetire().keySet().containsAll(spikeCase.atoms())) {
                     addFailure(stats, failures, original.getIndex()
-                            + ": IBEX_TEST reported an execution cutoff but Spike atoms lack first-retire metadata");
+                            + ": " + harnessName + " reported an execution cutoff but Spike atoms lack first-retire metadata");
                     continue;
                 }
                 if (!spikeCase.pairFirstRetire().keySet().containsAll(spikeCase.instructionPairs())) {
                     addFailure(stats, failures, original.getIndex()
-                            + ": IBEX_TEST reported an execution cutoff but Spike instruction pairs lack first-retire metadata");
+                            + ": " + harnessName + " reported an execution cutoff but Spike instruction pairs lack first-retire metadata");
                     continue;
                 }
                 evidenceAtoms = atomsAtExecutionBoundary(spikeCase, executionCutoff);

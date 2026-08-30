@@ -1,0 +1,4 @@
+repository=https://github.com/proteus-core/proteus
+commit=0f489fc5cfddabca93ae01880374385fcb649660
+release=25.08
+generated_module=ProteusContractCore

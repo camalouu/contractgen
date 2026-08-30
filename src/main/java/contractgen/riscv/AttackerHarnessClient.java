@@ -15,10 +15,6 @@ public interface AttackerHarnessClient {
     }
 
     record AttackerResult(SIMULATION_RESULT status, OptionalInt failureCutoff, OptionalInt executionCutoff) {
-        public AttackerResult(SIMULATION_RESULT status, OptionalInt failureCutoff) {
-            this(status, failureCutoff, OptionalInt.empty());
-        }
-
         public AttackerResult {
             failureCutoff = failureCutoff == null ? OptionalInt.empty() : failureCutoff;
             executionCutoff = executionCutoff == null ? OptionalInt.empty() : executionCutoff;

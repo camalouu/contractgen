@@ -28,6 +28,18 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main \
   -e <testcases.json> -o <contract.json> --txt <summary.txt>
 ```
 
+For newly generated tests, use the corresponding synthesis frontend:
+
+```bash
+java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main \
+  synth_new -p CVA6_TEST \
+  -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES -n 10000 -t 8 -s 51 \
+  -o <contract.json> --txt <summary.txt>
+```
+
+The legacy `synthesize` command intentionally remains separate and accepts
+only the original `IBEX` and `CVA6` integrations.
+
 The input testcase JSON and output contract JSON are unchanged from the
 `IBEX_TEST` replay flow. `--cva6-test-lib` or `CONTRACT_CVA6_TEST_LIB` can
 select an already-built attacker shared library. Otherwise the harness is

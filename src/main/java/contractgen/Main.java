@@ -6,11 +6,14 @@ import contractgen.generator.iverilog.ParallelIverilogGenerator;
 import contractgen.riscv.cva6.CVA6;
 import contractgen.riscv.cva6_test.CVA6Test;
 import contractgen.riscv.cva6_test.CVA6TestAttackerClient;
+import contractgen.riscv.AdaptiveAttackerRunner;
+import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
+import contractgen.riscv.hazard3_test.Hazard3Test;
+import contractgen.riscv.hazard3_test.Hazard3TestAttackerClient;
 import contractgen.riscv.ibex.IBEX;
 import contractgen.riscv.ibex.IBEXTest;
-import contractgen.riscv.ibex.IBEXTestAdaptiveRunner;
 import contractgen.riscv.ibex.IBEXTestAttackerClient;
 import contractgen.riscv.isa.RISCVTestCase;
 import contractgen.riscv.isa.RISCV_SUBSET;
@@ -29,6 +32,8 @@ import contractgen.riscv.isa.spike.SpikeAtomsWorker;
 import contractgen.riscv.isa.tests.RISCVIterativeTests;
 import contractgen.riscv.isa.tests.RISCVListTestCases;
 import contractgen.riscv.isa.tests.RISCVTestCaseIO;
+import contractgen.riscv.proteus.ProteusTest;
+import contractgen.riscv.proteus.ProteusTestAttackerClient;
 import contractgen.riscv.sodor.SODOR_2;
 import contractgen.riscv.sodor.SODOR_5;
 import contractgen.updater.ILPUpdater;
@@ -53,9 +58,10 @@ import java.util.Set;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, RefineZ3.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
+@Command(name = "main", subcommands = {Synthesize.class, SynthesizeNew.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, RefineZ3.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -75,11 +81,16 @@ public class Main implements Callable<Integer> {
     }
 }
 
-@Command(name = "synthesize", description = "Synthesize one contract.")
+enum LegacySynthesisProcessor {
+    IBEX,
+    CVA6
+}
+
+@Command(name = "synthesize", description = "Legacy contract synthesis using RTL for both attacker labels and contract atoms.")
 class Synthesize implements Callable<Integer> {
     // select the processor
     @Option(names = {"-p", "--processor"}, required = true, description = "The processor to use. Options: ${COMPLETION-CANDIDATES}")
-    CONFIG.PROCESSOR processor;
+    LegacySynthesisProcessor processor;
 
     // select ISA
     @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
@@ -136,20 +147,12 @@ class Synthesize implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != CONFIG.PROCESSOR.CVA6 || !useVerilator, reps, bitDist, randomPrefix, randomSuffix, resetSequence);
+        TestCases tc = new RISCVIterativeTests(isa, RISCV_OBSERVATION_TYPE.getGroups(template), seed, threads, number, isSP, processor != LegacySynthesisProcessor.CVA6 || !useVerilator, reps, bitDist, randomPrefix, randomSuffix, resetSequence);
         Generator generator = new 
         ParallelIverilogGenerator(
             switch (processor) {
                 case IBEX -> new IBEX(IBEX.VARIANT.BASE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
-                case IBEX_TEST -> new IBEXTest(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
-                case IBEX_CACHE -> new IBEX(IBEX.VARIANT.CACHE, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
-                case IBEX_SMALL -> new IBEX(IBEX.VARIANT.SMALL, new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
                 case CVA6 -> new CVA6(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
-                case SODOR_2 -> new SODOR_2(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
-                case SODOR_5 -> new SODOR_5(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
-                case DARKRISCV_2 -> new DARKRISCV_2(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
-                case DARKRISCV_3 -> new DARKRISCV_3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP);
-                case HAZARD3 -> new contractgen.riscv.hazard3.HAZARD3(new ILPUpdater(), tc, RISCV_OBSERVATION_TYPE.getGroups(template), isa, isSP, useVerilator);
             },
             threads, false, null, skipILP);
 
@@ -238,6 +241,170 @@ class Synthesize implements Callable<Integer> {
             throw new RuntimeException(e);
         }
         return 0;
+    }
+}
+
+@Command(name = "synth_new", description = "Synthesize using Spike for contract atoms and an attacker-only RTL harness for attacker labels.")
+class SynthesizeNew implements Callable<Integer> {
+    @Option(names = {"-p", "--processor"}, required = true, description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}")
+    ReplayAttackerHarness processor;
+
+    @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_SUBSET> isa;
+
+    @Option(names = {"-c", "--contract"}, required = true, description = "The contract template to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
+    Set<RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP> template;
+
+    @Option(names = {"-n"}, required = true, description = "Number of test cases")
+    int number;
+
+    @Option(names = {"-t"}, required = true, description = "Number of simulation threads")
+    int threads;
+
+    @Option(names = {"-s"}, required = true, description = "Seed")
+    long seed;
+
+    @Option(names = {"-o", "--output"}, required = true, description = "Output path (JSON)")
+    File out;
+
+    @Option(names = {"--testcases-output"}, description = "Output path for the exact generated testcase set. Defaults to <output>-testcases.json.")
+    File testcasesOut;
+
+    @Option(names = {"--txt"}, description = "Output path for txt-summary")
+    File txt;
+
+    @Option(names = {"--sp"}, description = "Only consider identical programs (same program mode)")
+    boolean isSP;
+
+    @Option(names = {"--skipILP"}, description = "Skip ILP after evaluating the test cases.")
+    boolean skipILP;
+
+    @Option(names = {"--instruction"}, description = "Always leak the instruction and the PC.")
+    boolean leakInstruction;
+
+    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom")
+    boolean randomSuffix;
+
+    @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions")
+    boolean resetSequence;
+
+    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    int reps;
+
+    @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates")
+    boolean bitDist;
+
+    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom")
+    boolean randomPrefix;
+
+    @Option(names = {"--spike-lib"}, description = "Path to libcontract_spike_atom.so. Defaults to CONTRACT_SPIKE_LIB or riscv-isa-sim/build/libcontract_spike_atom.so")
+    File spikeLib;
+
+    @Option(names = {"--ibex-test-lib"}, description = "Path to libcontract_ibex_test_attacker.so.")
+    File ibexTestLib;
+
+    @Option(names = {"--cva6-test-lib"}, description = "Path to libcontract_cva6_test_attacker.so.")
+    File cva6TestLib;
+
+    @Option(names = {"--hazard3-test-lib"}, description = "Path to libcontract_hazard3_test_attacker.so.")
+    File hazard3TestLib;
+
+    @Option(names = {"--proteus-test-lib"}, description = "Path to libcontract_proteus_test_attacker.so.")
+    File proteusTestLib;
+
+    @Option(names = {"--spike-isa"}, description = "Spike ISA string.", defaultValue = "RV32IM_Zicclsm")
+    String spikeIsa;
+
+    @Option(names = {"--negative-signature-threshold"}, description = "Maximum negative executions per exact Spike signature; zero means unlimited.", defaultValue = "0")
+    int negativeSignatureThreshold;
+
+    @Option(names = {"--use-skipped-evidence"}, description = "Add adaptively skipped cases as inferred evidence.")
+    boolean useSkippedEvidence;
+
+    @Option(names = {"--skip-positive-supersets"}, description = "Enable positive-superset signature skipping.")
+    boolean skipPositiveSupersets;
+
+    @Option(names = {"--skip-negative-subsets"}, description = "Enable negative-subset signature skipping.")
+    boolean skipNegativeSubsets;
+
+    @Option(names = {"--disable-adaptive-skipping"}, description = "Execute the attacker RTL for every generated testcase.")
+    boolean disableAdaptiveSkipping;
+
+    @Override
+    public Integer call() {
+        if (processor == ReplayAttackerHarness.PROTEUS_TEST && reps != 1) {
+            throw new IllegalArgumentException("PROTEUS_TEST direct synthesis currently requires --reps=1.");
+        }
+        if (processor == ReplayAttackerHarness.PROTEUS_TEST && resetSequence) {
+            throw new IllegalArgumentException("PROTEUS_TEST direct synthesis does not support --reset-sequence.");
+        }
+
+        boolean allowMisalignedMemory = processor == ReplayAttackerHarness.IBEX_TEST;
+        TestCases generated = new RISCVIterativeTests(
+                isa,
+                RISCV_OBSERVATION_TYPE.getGroups(template),
+                seed,
+                threads,
+                number,
+                isSP,
+                allowMisalignedMemory,
+                reps,
+                bitDist,
+                randomPrefix,
+                randomSuffix,
+                resetSequence
+        );
+        List<TestCase> tests = RISCVTestCaseIO.collect(generated::getIterator, threads);
+        Path testcasePath = resolveTestcasesOutput(out, testcasesOut);
+        try {
+            RISCVTestCaseIO.write(testcasePath, tests);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write generated testcases to " + testcasePath, e);
+        }
+        System.out.println("Exported " + tests.size() + " generated testcases to " + testcasePath);
+
+        ReplaySynthesizeSpike runner = new ReplaySynthesizeSpike();
+        runner.isa = isa;
+        runner.template = template;
+        runner.threads = threads;
+        runner.out = out;
+        runner.txt = txt;
+        runner.leakInstruction = leakInstruction;
+        runner.skipILP = skipILP;
+        runner.spikeLib = spikeLib;
+        runner.ibexTestLib = ibexTestLib;
+        runner.cva6TestLib = cva6TestLib;
+        runner.hazard3TestLib = hazard3TestLib;
+        runner.proteusTestLib = proteusTestLib;
+        runner.spikeIsa = spikeIsa;
+        runner.processor = processor;
+        runner.negativeSignatureThreshold = negativeSignatureThreshold;
+        runner.useSkippedEvidence = useSkippedEvidence;
+        runner.skipPositiveSupersets = skipPositiveSupersets;
+        runner.skipNegativeSubsets = skipNegativeSubsets;
+        runner.disableAdaptiveSkipping = disableAdaptiveSkipping;
+
+        String source = "generated seed=" + seed
+                + ", count=" + number
+                + ", reps=" + reps
+                + ", bitDist=" + bitDist
+                + ", randomPrefix=" + randomPrefix
+                + ", randomSuffix=" + randomSuffix
+                + ", resetSequence=" + resetSequence
+                + ", testcases=" + testcasePath;
+        return runner.runTests(tests, source);
+    }
+
+    static Path resolveTestcasesOutput(File contractOutput, File explicitOutput) {
+        if (explicitOutput != null) {
+            return explicitOutput.toPath();
+        }
+        Path contractPath = contractOutput.toPath();
+        String filename = contractPath.getFileName().toString();
+        String stem = filename.toLowerCase(java.util.Locale.ROOT).endsWith(".json")
+                ? filename.substring(0, filename.length() - 5)
+                : filename;
+        return contractPath.resolveSibling(stem + "-testcases.json");
     }
 }
 
@@ -814,7 +981,9 @@ class ReplaySynthesize implements Callable<Integer> {
 
 enum ReplayAttackerHarness {
     IBEX_TEST,
-    CVA6_TEST
+    CVA6_TEST,
+    HAZARD3_TEST,
+    PROTEUS_TEST
 }
 
 @Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
@@ -842,6 +1011,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--instruction"}, description = "Always leak the instruction and the PC.")
     boolean leakInstruction = false;
 
+    @Option(names = {"--skipILP"}, description = "Skip ILP after evaluating the replay cases.")
+    boolean skipILP = false;
+
     @Option(names = {"--spike-lib"}, description = "Path to libcontract_spike_atom.so. Defaults to CONTRACT_SPIKE_LIB or riscv-isa-sim/build/libcontract_spike_atom.so")
     File spikeLib;
 
@@ -850,6 +1022,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     @Option(names = {"--cva6-test-lib"}, description = "Path to libcontract_cva6_test_attacker.so. Defaults to CONTRACT_CVA6_TEST_LIB or the CVA6_TEST compilation output.")
     File cva6TestLib;
+
+    @Option(names = {"--hazard3-test-lib"}, description = "Path to libcontract_hazard3_test_attacker.so. Defaults to CONTRACT_HAZARD3_TEST_LIB or the HAZARD3_TEST compilation output.")
+    File hazard3TestLib;
+
+    @Option(names = {"--proteus-test-lib"}, description = "Path to libcontract_proteus_test_attacker.so. Defaults to CONTRACT_PROTEUS_TEST_LIB or the PROTEUS_TEST compilation output.")
+    File proteusTestLib;
 
     @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
     ReplayAttackerHarness processor;
@@ -872,18 +1050,25 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--disable-adaptive-skipping"}, description = "Execute the attacker RTL for every testcase; disables exact-signature, threshold, and signature-relation skipping.")
     boolean disableAdaptiveSkipping = false;
 
+    private String sourceDescription;
+
     @Override
     public Integer call() {
-        if (negativeSignatureThreshold < 0) {
-            throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
-        }
-        Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
         List<TestCase> tests;
         try {
             tests = RISCVTestCaseIO.read(testcases.toPath());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        return runTests(tests, testcases.getPath());
+    }
+
+    Integer runTests(List<TestCase> tests, String sourceDescription) {
+        if (negativeSignatureThreshold < 0) {
+            throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
+        }
+        this.sourceDescription = sourceDescription;
+        Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
 
         long start = System.currentTimeMillis();
         Path spikeLibrary = resolveSpikeLibrary();
@@ -903,39 +1088,92 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             ordinalTests.add(new RISCVTestCase(tc.getProgram1(), tc.getProgram2(), tc.getMaxInstructionCount(), tc.getLikelyCTX(), i));
         }
 
-        RISCVContract contract;
         String attackerHarnessName = processor.name();
         long attackerResolveStart = System.currentTimeMillis();
-        IBEXTestAdaptiveRunner.Result adaptiveResult;
-        if (processor == ReplayAttackerHarness.IBEX_TEST) {
-            IBEXTest ibexTest = new IBEXTest(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
-            Path ibexTestLibrary = resolveIbexTestLibrary(ibexTest);
-            contract = (RISCVContract) ibexTest.getISA().getContract();
-            long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
-            long attackerStart = System.currentTimeMillis();
-            adaptiveResult = new IBEXTestAdaptiveRunner(ibexTestLibrary, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping)
-                    .run(tests, ordinalTests, spikeByOrdinal);
-            long attackerTime = System.currentTimeMillis() - attackerStart;
-            synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
-            return 0;
-        }
-
-        CVA6Test cva6Test = new CVA6Test(new ILPUpdater(), new RISCVListTestCases(ordinalTests, threads), allowed, isa, false);
-        Path cva6TestLibrary = resolveCva6TestLibrary(cva6Test);
-        contract = (RISCVContract) cva6Test.getISA().getContract();
+        AttackerHarnessSetup harness = setupAttackerHarness(ordinalTests, allowed);
         long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
         long attackerStart = System.currentTimeMillis();
-        adaptiveResult = new IBEXTestAdaptiveRunner(cva6TestLibrary, "CVA6_TEST", CVA6TestAttackerClient::new, threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets, skipNegativeSubsets, disableAdaptiveSkipping)
+        AdaptiveAttackerRunner.Result adaptiveResult = new AdaptiveAttackerRunner(
+                harness.library(), attackerHarnessName, harness.clientFactory(), harness.requireFailureCutoff(),
+                threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets,
+                skipNegativeSubsets, disableAdaptiveSkipping)
                 .run(tests, ordinalTests, spikeByOrdinal);
         long attackerTime = System.currentTimeMillis() - attackerStart;
-        synthesizeAndWrite(contract, tests, adaptiveResult, failures, spikeTime, attackerResolveTime, attackerTime, start, attackerHarnessName);
+        synthesizeAndWrite(harness.contract(), tests, adaptiveResult, failures, spikeTime,
+                attackerResolveTime, attackerTime, start, attackerHarnessName);
         return 0;
+    }
+
+    private AttackerHarnessSetup setupAttackerHarness(
+            List<TestCase> ordinalTests,
+            Set<RISCV_OBSERVATION_TYPE> allowed
+    ) {
+        RISCVListTestCases testCases = new RISCVListTestCases(ordinalTests, threads);
+        return switch (processor) {
+            case IBEX_TEST -> createHarnessSetup(
+                    new IBEXTest(new ILPUpdater(), testCases, allowed, isa, false),
+                    ibexTestLib, "CONTRACT_IBEX_TEST_LIB",
+                    "/home/yosys/output/ibex-test/compiled/libcontract_ibex_test_attacker.so",
+                    IBEXTestAttackerClient::new, true, false);
+            case CVA6_TEST -> createHarnessSetup(
+                    new CVA6Test(new ILPUpdater(), testCases, allowed, isa, false),
+                    cva6TestLib, "CONTRACT_CVA6_TEST_LIB",
+                    "/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so",
+                    CVA6TestAttackerClient::new, false, true);
+            case HAZARD3_TEST -> createHarnessSetup(
+                    new Hazard3Test(new ILPUpdater(), testCases, allowed, isa, false),
+                    hazard3TestLib, "CONTRACT_HAZARD3_TEST_LIB",
+                    "/home/yosys/output/hazard3-test/compiled/libcontract_hazard3_test_attacker.so",
+                    Hazard3TestAttackerClient::new, false, false);
+            case PROTEUS_TEST -> createHarnessSetup(
+                    new ProteusTest(new ILPUpdater(), testCases, allowed, isa, false),
+                    proteusTestLib, "CONTRACT_PROTEUS_TEST_LIB",
+                    "/home/yosys/output/proteus-test/compiled/libcontract_proteus_test_attacker.so",
+                    ProteusTestAttackerClient::new, true, false);
+        };
+    }
+
+    private AttackerHarnessSetup createHarnessSetup(
+            MARCH march,
+            File explicitLibrary,
+            String environmentVariable,
+            String defaultLibrary,
+            Function<Path, AttackerHarnessClient> clientFactory,
+            boolean requireFailureCutoff,
+            boolean rebuildDefault
+    ) {
+        Path library = explicitLibrary == null ? null : explicitLibrary.toPath();
+        boolean externallyProvided = library != null;
+        if (library == null) {
+            String environmentPath = System.getenv(environmentVariable);
+            externallyProvided = environmentPath != null && !environmentPath.isBlank();
+            library = externallyProvided ? Path.of(environmentPath) : Path.of(defaultLibrary);
+        }
+        if (!externallyProvided && (rebuildDefault || !Files.exists(library))) {
+            if (rebuildDefault) {
+                System.out.println("Rebuilding " + processor + " attacker shared library from the current harness sources.");
+            }
+            march.compile();
+        }
+        if (!Files.exists(library)) {
+            throw new IllegalStateException(processor + " attacker shared library not found at " + library);
+        }
+        return new AttackerHarnessSetup(
+                (RISCVContract) march.getISA().getContract(), library, clientFactory, requireFailureCutoff);
+    }
+
+    private record AttackerHarnessSetup(
+            RISCVContract contract,
+            Path library,
+            Function<Path, AttackerHarnessClient> clientFactory,
+            boolean requireFailureCutoff
+    ) {
     }
 
     private void synthesizeAndWrite(
             RISCVContract contract,
             List<TestCase> tests,
-            IBEXTestAdaptiveRunner.Result adaptiveResult,
+            AdaptiveAttackerRunner.Result adaptiveResult,
             List<String> failures,
             long spikeTime,
             long attackerResolveTime,
@@ -960,7 +1198,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             addInstructionLeaks(contract, tests.size() + 1);
         }
         long ilpStart = System.currentTimeMillis();
-        contract.update(true);
+        if (!skipILP) {
+            contract.update(true);
+        }
         long ilpTime = System.currentTimeMillis() - ilpStart;
 
         long timeElapsed = System.currentTimeMillis() - start;
@@ -990,7 +1230,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tTemplate: ").append(template).append("\n");
                 sb.append("\tCount: ").append(tests.size()).append("\n");
                 sb.append("\tThreads: ").append(threads).append("\n");
-                sb.append("\tSource: ").append(testcases.getPath()).append("\n");
+                sb.append("\tSource: ").append(sourceDescription).append("\n");
+                sb.append("\tSkip ILP: ").append(skipILP).append("\n");
                 sb.append("\tSpike Time: ").append(spikeTime).append(" ms\n");
                 sb.append("\t").append(attackerHarnessName).append(" Library Time: ").append(attackerResolveTime).append(" ms\n");
                 sb.append("\tAdaptive Attacker Time: ").append(attackerTime).append(" ms\n");
@@ -1050,55 +1291,6 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             return Path.of(env);
         }
         return Path.of("riscv-isa-sim/build/libcontract_spike_atom.so");
-    }
-
-    private Path resolveIbexTestLibrary(IBEXTest ibexTest) {
-        Path library;
-        boolean explicitLibrary = false;
-        if (ibexTestLib != null) {
-            library = ibexTestLib.toPath();
-            explicitLibrary = true;
-        } else {
-            String env = System.getenv("CONTRACT_IBEX_TEST_LIB");
-            if (env != null && !env.isBlank()) {
-                library = Path.of(env);
-                explicitLibrary = true;
-            } else {
-                library = Path.of("/home/yosys/output/ibex-test/compiled/libcontract_ibex_test_attacker.so");
-            }
-        }
-        if (!Files.exists(library) && !explicitLibrary) {
-            ibexTest.compile();
-        }
-        if (!Files.exists(library)) {
-            throw new IllegalStateException("IBEX_TEST attacker shared library not found at " + library);
-        }
-        return library;
-    }
-
-    private Path resolveCva6TestLibrary(CVA6Test cva6Test) {
-        Path library;
-        boolean explicitLibrary = false;
-        if (cva6TestLib != null) {
-            library = cva6TestLib.toPath();
-            explicitLibrary = true;
-        } else {
-            String env = System.getenv("CONTRACT_CVA6_TEST_LIB");
-            if (env != null && !env.isBlank()) {
-                library = Path.of(env);
-                explicitLibrary = true;
-            } else {
-                library = Path.of("/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so");
-            }
-        }
-        if (!explicitLibrary) {
-            System.out.println("Rebuilding CVA6_TEST attacker shared library from the current harness sources.");
-            cva6Test.compile();
-        }
-        if (!Files.exists(library)) {
-            throw new IllegalStateException("CVA6_TEST attacker shared library not found at " + library);
-        }
-        return library;
     }
 
     private void addInstructionLeaks(RISCVContract contract, int startIndex) {

@@ -1,4 +1,4 @@
-package contractgen.riscv.ibex;
+package contractgen.riscv;
 
 import contractgen.Observation;
 import contractgen.SIMULATION_RESULT;
@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class IBEXTestAdaptiveRunnerTest {
+/** Tests cutoff filtering independently of a native attacker implementation. */
+class AdaptiveAttackerRunnerTest {
     private static final RISCVObservation EARLY =
             new RISCVObservation(RISCV_TYPE.ADDI, RISCV_OBSERVATION_TYPE.IMM);
     private static final RISCVObservation LATE =
@@ -48,7 +49,7 @@ class IBEXTestAdaptiveRunnerTest {
                 0, withOrdinal(timed, 0, 10),
                 1, withOrdinal(timed, 1, 11));
 
-        IBEXTestAdaptiveRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.of(34), true)
+        AdaptiveAttackerRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.of(34), true)
                 .run(tests, tests, spike);
 
         assertEquals(Set.of(EARLY), observations(result.results()[0]));
@@ -67,7 +68,7 @@ class IBEXTestAdaptiveRunnerTest {
                 0, withOrdinal(timed, 0, 12),
                 1, withOrdinal(timed, 1, 13));
 
-        IBEXTestAdaptiveRunner.Result result = runner(
+        AdaptiveAttackerRunner.Result result = runner(
                 SIMULATION_RESULT.FAIL, OptionalInt.of(34), false, true)
                 .run(tests, tests, spike);
 
@@ -85,7 +86,7 @@ class IBEXTestAdaptiveRunnerTest {
     @Test
     void executedNegativeWithoutBoundaryRetainsAllBoundedSpikeAtoms() {
         TestCase test = test(20);
-        IBEXTestAdaptiveRunner.Result result = runner(SIMULATION_RESULT.SUCCESS, OptionalInt.empty(), false)
+        AdaptiveAttackerRunner.Result result = runner(SIMULATION_RESULT.SUCCESS, OptionalInt.empty(), false)
                 .run(List.of(test), List.of(test), Map.of(0, timedAtoms()));
 
         assertEquals(Set.of(EARLY, LATE), observations(result.results()[0]));
@@ -97,7 +98,7 @@ class IBEXTestAdaptiveRunnerTest {
     @Test
     void executedNegativeFiltersEvidenceAfterNativeExecutionCutoff() {
         TestCase test = test(21);
-        IBEXTestAdaptiveRunner.Result result = runner(
+        AdaptiveAttackerRunner.Result result = runner(
                 SIMULATION_RESULT.SUCCESS, OptionalInt.empty(), OptionalInt.of(34), false, false)
                 .run(List.of(test), List.of(test), Map.of(0, timedAtoms()));
 
@@ -115,7 +116,7 @@ class IBEXTestAdaptiveRunnerTest {
                 Set.of(EARLY, NOP_TAIL_DEPENDENCY, FALSE_SUFFIX_CONTROL),
                 Map.of(EARLY, 34, NOP_TAIL_DEPENDENCY, 38, FALSE_SUFFIX_CONTROL, 36),
                 Set.of(LATE_PAIR), Map.of(LATE_PAIR, 36), null);
-        IBEXTestAdaptiveRunner.Result result = runner(
+        AdaptiveAttackerRunner.Result result = runner(
                 SIMULATION_RESULT.SUCCESS, OptionalInt.empty(), OptionalInt.of(34), false, false)
                 .run(List.of(test), List.of(test), Map.of(0, spike));
 
@@ -126,7 +127,7 @@ class IBEXTestAdaptiveRunnerTest {
     @Test
     void positiveWithoutCutoffIsRejected() {
         TestCase test = test(30);
-        IBEXTestAdaptiveRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.empty(), false)
+        AdaptiveAttackerRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.empty(), false)
                 .run(List.of(test), List.of(test), Map.of(0, timedAtoms()));
 
         assertNull(result.results()[0]);
@@ -139,7 +140,7 @@ class IBEXTestAdaptiveRunnerTest {
         TestCase test = test(40);
         SpikeAtomClient.SpikeCaseAtoms lateOnly = new SpikeAtomClient.SpikeCaseAtoms(
                 0, 40, Set.of(LATE), Map.of(LATE, 36), null);
-        IBEXTestAdaptiveRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.of(34), false)
+        AdaptiveAttackerRunner.Result result = runner(SIMULATION_RESULT.FAIL, OptionalInt.of(34), false)
                 .run(List.of(test), List.of(test), Map.of(0, lateOnly));
 
         assertNull(result.results()[0]);
@@ -147,7 +148,7 @@ class IBEXTestAdaptiveRunnerTest {
         assertTrue(result.failures().get(0).contains("no Spike evidence occurs by failure cutoff"));
     }
 
-    private static IBEXTestAdaptiveRunner runner(
+    private static AdaptiveAttackerRunner runner(
             SIMULATION_RESULT status,
             OptionalInt cutoff,
             boolean useSkippedEvidence
@@ -155,7 +156,7 @@ class IBEXTestAdaptiveRunnerTest {
         return runner(status, cutoff, useSkippedEvidence, false);
     }
 
-    private static IBEXTestAdaptiveRunner runner(
+    private static AdaptiveAttackerRunner runner(
             SIMULATION_RESULT status,
             OptionalInt cutoff,
             boolean useSkippedEvidence,
@@ -164,14 +165,14 @@ class IBEXTestAdaptiveRunnerTest {
         return runner(status, cutoff, OptionalInt.empty(), useSkippedEvidence, disableAdaptiveSkipping);
     }
 
-    private static IBEXTestAdaptiveRunner runner(
+    private static AdaptiveAttackerRunner runner(
             SIMULATION_RESULT status,
             OptionalInt cutoff,
             OptionalInt executionCutoff,
             boolean useSkippedEvidence,
             boolean disableAdaptiveSkipping
     ) {
-        return new IBEXTestAdaptiveRunner(
+        return new AdaptiveAttackerRunner(
                 Path.of("unused"),
                 "IBEX_TEST",
                 ignored -> new AttackerHarnessClient() {
@@ -185,7 +186,7 @@ class IBEXTestAdaptiveRunnerTest {
                         return new AttackerResult(status, cutoff, executionCutoff);
                     }
                 },
-                1, 0, useSkippedEvidence, false, false, disableAdaptiveSkipping);
+                true, 1, 0, useSkippedEvidence, false, false, disableAdaptiveSkipping);
     }
 
     private static SpikeAtomClient.SpikeCaseAtoms timedAtoms() {
