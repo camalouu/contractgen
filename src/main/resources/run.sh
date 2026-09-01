@@ -4,14 +4,15 @@ set -euo pipefail
 cd /home/yosys/project
 mvn clean package
 
-platform="PROTEUS_TEST"
+# platform="PROTEUS_TEST"
 # platform="HAZARD3_TEST"
-# platform="IBEX"
-# platform="HAZARD3_TEST"
-count=100000
+# platform="SODOR_2_TEST"
+# platform="CVA6_TEST"
+# platform="DARKRISCV_2_TEST"
+platform="FWRISC_TEST"
+count=50000
 
-json_out="/home/yosys/project/${platform,,}-${count}-full-results.json"
-txt_out="/home/yosys/project/${platform,,}-${count}-full-results.txt"
+output_dir="/home/yosys/project/results/${platform,,}-${count}-seed51"
 
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -p "$platform" \
@@ -20,8 +21,7 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -n "$count" \
   -t 8 \
   -s 51 \
-  -o "$json_out" \
-  --txt "$txt_out" \
+  --output-dir "$output_dir" \
   --disable-adaptive-skipping
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main export_tests \

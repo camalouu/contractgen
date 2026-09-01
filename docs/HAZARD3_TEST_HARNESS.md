@@ -25,14 +25,14 @@ Generate tests and synthesize a contract:
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -p HAZARD3_TEST -i BASE,M \
   -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
-  -n 10000 -t 8 -s 51 -o hazard3-test-results.json \
-  --txt hazard3-test-results.txt --disable-adaptive-skipping
+  -n 10000 -t 8 -s 51 \
+  --output-dir results/hazard3_test-10000-seed51 \
+  --disable-adaptive-skipping
 ```
 
 `synth_new` always writes the exact generated testcase set before starting
-Spike or RTL execution. For the command above the default path is
-`hazard3-test-results-testcases.json`. Select another path with
-`--testcases-output hazard3-testcases.json`. The file uses the same
+Spike or RTL execution. `--output-dir` creates `contract.json`,
+`testcases.json`, and `summary.txt` together. The testcase file uses the same
 `RISCVTestCaseIO` JSON format as `export_tests` and can be passed directly to
 `replay_synthesize_spike -e`.
 

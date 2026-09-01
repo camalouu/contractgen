@@ -15,9 +15,10 @@ testcase JSON file. The legacy `synthesize -p IBEX` command does not use Spike
 or this attacker-only harness.
 
 Every `synth_new` run also exports its exact generated testcase set in the
-same JSON format as `export_tests`. By default, an output `results/run.json`
-produces `results/run-testcases.json`; use `--testcases-output` to override the
-path. The testcase file is written before Spike or RTL execution begins.
+same JSON format as `export_tests`. Prefer `--output-dir results/run`, which
+writes `contract.json`, `testcases.json`, and `summary.txt` together. Explicit
+`--output`, `--testcases-output`, and `--txt` paths remain available for
+compatibility. The testcase file is written before Spike or RTL execution.
 
 ## Spike Atom Extraction
 

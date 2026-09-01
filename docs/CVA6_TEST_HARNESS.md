@@ -34,7 +34,7 @@ For newly generated tests, use the corresponding synthesis frontend:
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main \
   synth_new -p CVA6_TEST \
   -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES -n 10000 -t 8 -s 51 \
-  -o <contract.json> --txt <summary.txt>
+  --output-dir results/cva6_test-10000-seed51
 ```
 
 The legacy `synthesize` command intentionally remains separate and accepts

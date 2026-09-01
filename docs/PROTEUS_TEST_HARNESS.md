@@ -29,7 +29,8 @@ Direct generation and synthesis:
 ```sh
 mvn -q exec:java -Dexec.mainClass=contractgen.Main \
   -Dexec.args='synth_new -p PROTEUS_TEST -i BASE,M -c BASE -n 100 -t 4 -s 1 \
-  -o results/proteus.json --proteus-test-lib /path/to/libcontract_proteus_test_attacker.so'
+  --output-dir results/proteus_test-100-seed1 \
+  --proteus-test-lib /path/to/libcontract_proteus_test_attacker.so'
 ```
 
 Replay an exported testcase set:

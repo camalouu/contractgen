@@ -8,6 +8,8 @@ import contractgen.riscv.cva6_test.CVA6Test;
 import contractgen.riscv.cva6_test.CVA6TestAttackerClient;
 import contractgen.riscv.AdaptiveAttackerRunner;
 import contractgen.riscv.AttackerHarnessClient;
+import contractgen.riscv.SimpleAttackerHarnessClient;
+import contractgen.riscv.SimpleTestMARCH;
 import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
 import contractgen.riscv.hazard3_test.Hazard3Test;
@@ -264,8 +266,11 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"-s"}, required = true, description = "Seed")
     long seed;
 
-    @Option(names = {"-o", "--output"}, required = true, description = "Output path (JSON)")
+    @Option(names = {"-o", "--output"}, description = "Contract output path (JSON). Required unless --output-dir is used.")
     File out;
+
+    @Option(names = {"--output-dir"}, description = "Write contract.json, testcases.json, and summary.txt into this directory.")
+    File outputDir;
 
     @Option(names = {"--testcases-output"}, description = "Output path for the exact generated testcase set. Defaults to <output>-testcases.json.")
     File testcasesOut;
@@ -312,6 +317,15 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--proteus-test-lib"}, description = "Path to libcontract_proteus_test_attacker.so.")
     File proteusTestLib;
 
+    @Option(names = {"--sodor-2-test-lib"}, description = "Path to libcontract_sodor_2_test_attacker.so.")
+    File sodor2TestLib;
+
+    @Option(names = {"--darkriscv-2-test-lib"}, description = "Path to libcontract_darkriscv_2_test_attacker.so.")
+    File darkriscv2TestLib;
+
+    @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so.")
+    File fwriscTestLib;
+
     @Option(names = {"--spike-isa"}, description = "Spike ISA string.", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
 
@@ -332,6 +346,17 @@ class SynthesizeNew implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        OutputPaths outputs = resolveOutputs(outputDir, out, testcasesOut, txt);
+        out = outputs.contract().toFile();
+        testcasesOut = outputs.testcases().toFile();
+        txt = outputs.summary() == null ? null : outputs.summary().toFile();
+        if (outputDir != null) {
+            try {
+                Files.createDirectories(outputDir.toPath());
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to create output directory " + outputDir, e);
+            }
+        }
         if (processor == ReplayAttackerHarness.PROTEUS_TEST && reps != 1) {
             throw new IllegalArgumentException("PROTEUS_TEST direct synthesis currently requires --reps=1.");
         }
@@ -376,6 +401,9 @@ class SynthesizeNew implements Callable<Integer> {
         runner.cva6TestLib = cva6TestLib;
         runner.hazard3TestLib = hazard3TestLib;
         runner.proteusTestLib = proteusTestLib;
+        runner.sodor2TestLib = sodor2TestLib;
+        runner.darkriscv2TestLib = darkriscv2TestLib;
+        runner.fwriscTestLib = fwriscTestLib;
         runner.spikeIsa = spikeIsa;
         runner.processor = processor;
         runner.negativeSignatureThreshold = negativeSignatureThreshold;
@@ -405,6 +433,30 @@ class SynthesizeNew implements Callable<Integer> {
                 ? filename.substring(0, filename.length() - 5)
                 : filename;
         return contractPath.resolveSibling(stem + "-testcases.json");
+    }
+
+    static OutputPaths resolveOutputs(File outputDir, File contract, File testcases, File summary) {
+        if (outputDir != null) {
+            if (contract != null || testcases != null || summary != null) {
+                throw new IllegalArgumentException(
+                        "--output-dir cannot be combined with --output, --testcases-output, or --txt.");
+            }
+            Path directory = outputDir.toPath();
+            return new OutputPaths(
+                    directory.resolve("contract.json"),
+                    directory.resolve("testcases.json"),
+                    directory.resolve("summary.txt"));
+        }
+        if (contract == null) {
+            throw new IllegalArgumentException("Either --output-dir or --output is required.");
+        }
+        return new OutputPaths(
+                contract.toPath(),
+                resolveTestcasesOutput(contract, testcases),
+                summary == null ? null : summary.toPath());
+    }
+
+    record OutputPaths(Path contract, Path testcases, Path summary) {
     }
 }
 
@@ -983,7 +1035,10 @@ enum ReplayAttackerHarness {
     IBEX_TEST,
     CVA6_TEST,
     HAZARD3_TEST,
-    PROTEUS_TEST
+    PROTEUS_TEST,
+    SODOR_2_TEST,
+    DARKRISCV_2_TEST,
+    FWRISC_TEST
 }
 
 @Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
@@ -1029,6 +1084,15 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--proteus-test-lib"}, description = "Path to libcontract_proteus_test_attacker.so. Defaults to CONTRACT_PROTEUS_TEST_LIB or the PROTEUS_TEST compilation output.")
     File proteusTestLib;
 
+    @Option(names = {"--sodor-2-test-lib"}, description = "Path to libcontract_sodor_2_test_attacker.so. Defaults to CONTRACT_SODOR_2_TEST_LIB or the SODOR_2_TEST compilation output.")
+    File sodor2TestLib;
+
+    @Option(names = {"--darkriscv-2-test-lib"}, description = "Path to libcontract_darkriscv_2_test_attacker.so. Defaults to CONTRACT_DARKRISCV_2_TEST_LIB or the DARKRISCV_2_TEST compilation output.")
+    File darkriscv2TestLib;
+
+    @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so. Defaults to CONTRACT_FWRISC_TEST_LIB or the FWRISC_TEST compilation output.")
+    File fwriscTestLib;
+
     @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
     ReplayAttackerHarness processor;
 
@@ -1067,6 +1131,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
         }
+        validateHarnessIsa(processor, isa);
         this.sourceDescription = sourceDescription;
         Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
 
@@ -1130,7 +1195,43 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     proteusTestLib, "CONTRACT_PROTEUS_TEST_LIB",
                     "/home/yosys/output/proteus-test/compiled/libcontract_proteus_test_attacker.so",
                     ProteusTestAttackerClient::new, true, false);
+            case SODOR_2_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "sodor-test", "SODOR_2_TEST",
+                    sodor2TestLib, "CONTRACT_SODOR_2_TEST_LIB",
+                    "/home/yosys/output/sodor-test/compiled/libcontract_sodor_2_test_attacker.so");
+            case DARKRISCV_2_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "darkriscv-test", "DARKRISCV_2_TEST",
+                    darkriscv2TestLib, "CONTRACT_DARKRISCV_2_TEST_LIB",
+                    "/home/yosys/output/darkriscv-test/compiled/libcontract_darkriscv_2_test_attacker.so");
+            case FWRISC_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "fwrisc-test", "FWRISC_TEST",
+                    fwriscTestLib, "CONTRACT_FWRISC_TEST_LIB",
+                    "/home/yosys/output/fwrisc-test/compiled/libcontract_fwrisc_test_attacker.so");
         };
+    }
+
+    private AttackerHarnessSetup simpleHarnessSetup(
+            RISCVListTestCases testCases,
+            Set<RISCV_OBSERVATION_TYPE> allowed,
+            String resourceName,
+            String harnessName,
+            File explicitLibrary,
+            String environmentVariable,
+            String defaultLibrary
+    ) {
+        MARCH march = new SimpleTestMARCH(
+                new ILPUpdater(), testCases, allowed, isa, resourceName, harnessName);
+        return createHarnessSetup(
+                march, explicitLibrary, environmentVariable, defaultLibrary,
+                path -> new SimpleAttackerHarnessClient(path, harnessName), false, true);
+    }
+
+    static void validateHarnessIsa(ReplayAttackerHarness processor, Set<RISCV_SUBSET> isa) {
+        if ((processor == ReplayAttackerHarness.SODOR_2_TEST
+                || processor == ReplayAttackerHarness.DARKRISCV_2_TEST)
+                && isa.contains(RISCV_SUBSET.M)) {
+            throw new IllegalArgumentException(processor + " uses the checked-in RV32I core and does not support M.");
+        }
     }
 
     private AttackerHarnessSetup createHarnessSetup(
