@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class RISCVInstructionEncodingTest {
 
@@ -30,5 +32,11 @@ final class RISCVInstructionEncodingTest {
             assertEquals(32, instruction.toBinaryEncoding().length(), instruction.toString());
             assertEquals(8, instruction.toHexEncoding().length(), instruction.toString());
         }
+    }
+
+    @Test
+    void distinguishesArchitecturalRs2FromShiftImmediateEncoding() {
+        assertTrue(RISCVInstruction.SLL(1, 2, 3).hasArchitecturalRS2());
+        assertFalse(RISCVInstruction.SLLI(1, 2, 3).hasArchitecturalRS2());
     }
 }

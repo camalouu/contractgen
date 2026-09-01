@@ -327,6 +327,14 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                 RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, randomImmediate(MAX_IMM_I));
                 yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
             }
+            case REG_RS2_LOW5 -> {
+                if (!instruction.hasArchitecturalRS2() || instruction.rs2() == 0) yield null;
+                long value1 = randomImmediate(MAX_IMM_I);
+                long value2 = value1 ^ 1L;
+                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs2(), 0, value1);
+                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, value2);
+                yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
+            }
             case MEM_ADDR -> {
                 if (instruction.rs1() == null) yield null;
                 long address = randomImmediate(MAX_IMM_I);

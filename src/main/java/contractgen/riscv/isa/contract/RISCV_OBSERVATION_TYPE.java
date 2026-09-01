@@ -158,7 +158,11 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
     /**
      * log2 of the value of rd
      */
-    REG_RD_LOG2(37, "reg_rd_log2");
+    REG_RD_LOG2(37, "reg_rd_log2"),
+    /**
+     * The low five bits of the value of rs2.
+     */
+    REG_RS2_LOW5(38, "reg_rs2_low5");
 
 
     /**
@@ -260,7 +264,8 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
                 REG_RD_ZERO,
                 REG_RS1_LOG2,
                 REG_RS2_LOG2,
-                REG_RD_LOG2
+                REG_RD_LOG2,
+                REG_RS2_LOW5
         );
     }
 

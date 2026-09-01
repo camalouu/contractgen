@@ -24,6 +24,7 @@ public record RISCVInstruction(RISCV_TYPE type, Integer rd, Integer rs1, Integer
 
     private static final Set<RISCV_TYPE> branches = Set.of(RISCV_TYPE.BEQ, RISCV_TYPE.BNE, RISCV_TYPE.BLT, RISCV_TYPE.BGE, RISCV_TYPE.BLTU, RISCV_TYPE.BGEU);
     private static final Set<RISCV_TYPE> jumps = Set.of(RISCV_TYPE.JAL, RISCV_TYPE.JALR);
+    private static final Set<RISCV_TYPE> shiftImmediates = Set.of(RISCV_TYPE.SLLI, RISCV_TYPE.SRLI, RISCV_TYPE.SRAI);
 
     /**
      * @param rd The new destination register.
@@ -170,6 +171,15 @@ public record RISCVInstruction(RISCV_TYPE type, Integer rd, Integer rs1, Integer
      };
     }
 
+    /**
+     * Whether the instruction reads an architectural second source register.
+     * Shift-immediate instructions are encoded as R-type in this model, but their
+     * {@code rs2} field contains the shift amount rather than a register number.
+     */
+    public static boolean hasArchitecturalRS2(RISCV_TYPE type) {
+        return hasRS2(type) && !shiftImmediates.contains(type);
+    }
+
     public static boolean hasIMM(RISCV_TYPE type) {
      return switch (type.getFormat()) {
          case RTYPE -> false;
@@ -207,6 +217,10 @@ public record RISCVInstruction(RISCV_TYPE type, Integer rd, Integer rs1, Integer
 
     public boolean hasRS2() {
         return rs2 != null;
+    }
+
+    public boolean hasArchitecturalRS2() {
+        return rs2 != null && hasArchitecturalRS2(type);
     }
 
     public boolean hasIMM() {

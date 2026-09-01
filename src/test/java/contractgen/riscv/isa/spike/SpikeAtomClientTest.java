@@ -35,4 +35,20 @@ class SpikeAtomClientTest {
         assertEquals(Set.of(pair), cases.get(0).instructionPairs());
         assertEquals(35, cases.get(0).firstRetire(pair).orElseThrow());
     }
+
+    @Test
+    void parsesRs2LowFiveAtom() {
+        String json = """
+                {"cases":[{"ordinal":0,"case_index":9,"atoms":[
+                  {"type":"SLL","observation":"REG_RS2_LOW5","first_retire":33}
+                ]}]}
+                """;
+
+        SpikeAtomClient.SpikeCaseAtoms result = SpikeAtomClient.parseResponse(
+                json, EnumSet.allOf(RISCV_OBSERVATION_TYPE.class)).get(0);
+        RISCVObservation atom = new RISCVObservation(RISCV_TYPE.SLL, RISCV_OBSERVATION_TYPE.REG_RS2_LOW5);
+
+        assertEquals(Set.of(atom), result.atoms());
+        assertEquals(33, result.firstRetire(atom).orElseThrow());
+    }
 }

@@ -12,7 +12,7 @@ mvn clean package
 platform="FWRISC_TEST"
 count=50000
 
-output_dir="/home/yosys/project/results/${platform,,}-${count}-seed51"
+output_dir="/home/yosys/project/results/${platform,,}-${count}-seed31"
 
 java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -p "$platform" \
@@ -20,7 +20,7 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
   -n "$count" \
   -t 8 \
-  -s 51 \
+  -s 31 \
   --output-dir "$output_dir" \
   --disable-adaptive-skipping
 

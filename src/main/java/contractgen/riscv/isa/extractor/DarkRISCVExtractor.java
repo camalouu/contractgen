@@ -339,6 +339,15 @@ public class DarkRISCVExtractor implements Extractor {
             obs.add(new RISCVObservation(instr_1.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOG2));
             obs.add(new RISCVObservation(instr_2.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOG2));
         }
+        if (instr_1.hasArchitecturalRS2() && instr_2.hasArchitecturalRS2()
+                && (StringUtils.fromBinary(reg_rs2_1) & 0x1fL) != (StringUtils.fromBinary(reg_rs2_2) & 0x1fL)) {
+            obs.add(new RISCVObservation(instr_1.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOW5));
+            obs.add(new RISCVObservation(instr_2.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOW5));
+        } else if (instr_1.hasArchitecturalRS2() && !instr_2.hasArchitecturalRS2()) {
+            obs.add(new RISCVObservation(instr_1.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOW5));
+        } else if (!instr_1.hasArchitecturalRS2() && instr_2.hasArchitecturalRS2()) {
+            obs.add(new RISCVObservation(instr_2.type(), RISCV_OBSERVATION_TYPE.REG_RS2_LOW5));
+        }
 
         if ((instr_1.hasRD() && instr_2.hasRD()) && !Objects.equals(reg_rd_1, reg_rd_2)) {
             obs.add(new RISCVObservation(instr_1.type(), RISCV_OBSERVATION_TYPE.REG_RD));
