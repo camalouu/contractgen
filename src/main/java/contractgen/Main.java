@@ -326,6 +326,9 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so.")
     File fwriscTestLib;
 
+    @Option(names = {"--cv32e40p-test-lib"}, description = "Path to libcontract_cv32e40p_test_attacker.so.")
+    File cv32e40pTestLib;
+
     @Option(names = {"--spike-isa"}, description = "Spike ISA string.", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
 
@@ -404,6 +407,7 @@ class SynthesizeNew implements Callable<Integer> {
         runner.sodor2TestLib = sodor2TestLib;
         runner.darkriscv2TestLib = darkriscv2TestLib;
         runner.fwriscTestLib = fwriscTestLib;
+        runner.cv32e40pTestLib = cv32e40pTestLib;
         runner.spikeIsa = spikeIsa;
         runner.processor = processor;
         runner.negativeSignatureThreshold = negativeSignatureThreshold;
@@ -1038,7 +1042,8 @@ enum ReplayAttackerHarness {
     PROTEUS_TEST,
     SODOR_2_TEST,
     DARKRISCV_2_TEST,
-    FWRISC_TEST
+    FWRISC_TEST,
+    CV32E40P_TEST
 }
 
 @Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
@@ -1092,6 +1097,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so. Defaults to CONTRACT_FWRISC_TEST_LIB or the FWRISC_TEST compilation output.")
     File fwriscTestLib;
+
+    @Option(names = {"--cv32e40p-test-lib"}, description = "Path to libcontract_cv32e40p_test_attacker.so. Defaults to CONTRACT_CV32E40P_TEST_LIB or the CV32E40P_TEST compilation output.")
+    File cv32e40pTestLib;
 
     @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
     ReplayAttackerHarness processor;
@@ -1207,6 +1215,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     testCases, allowed, "fwrisc-test", "FWRISC_TEST",
                     fwriscTestLib, "CONTRACT_FWRISC_TEST_LIB",
                     "/home/yosys/output/fwrisc-test/compiled/libcontract_fwrisc_test_attacker.so");
+            case CV32E40P_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "cv32e40p-test", "CV32E40P_TEST",
+                    cv32e40pTestLib, "CONTRACT_CV32E40P_TEST_LIB",
+                    "/home/yosys/output/cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so");
         };
     }
 

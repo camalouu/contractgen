@@ -9,8 +9,9 @@ mvn clean package
 # platform="SODOR_2_TEST"
 # platform="CVA6_TEST"
 # platform="DARKRISCV_2_TEST"
-platform="FWRISC_TEST"
-count=50000
+# platform="FWRISC_TEST"
+platform="CV32E40P_TEST"
+count=100000
 
 output_dir="/home/yosys/project/results/${platform,,}-${count}-seed31"
 

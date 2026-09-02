@@ -10,3 +10,9 @@
 [submodule "src/main/resources/hazard3/core"]
 	path = src/main/resources/hazard3/core
 	url = https://github.com/Wren6991/Hazard3.git
+[submodule "src/main/resources/fwrisc-test/core"]
+	path = src/main/resources/fwrisc-test/core
+	url = https://github.com/featherweight-ip/fwrisc.git
+[submodule "src/main/resources/cv32e40p-test/core"]
+	path = src/main/resources/cv32e40p-test/core
+	url = https://github.com/openhwgroup/cv32e40p.git
