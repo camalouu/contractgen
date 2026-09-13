@@ -1,0 +1,252 @@
+diff --git a/rtl/fwrisc_decode.sv b/rtl/fwrisc_decode.sv
+index 3ab0760..5656821 100644
+--- a/rtl/fwrisc_decode.sv
++++ b/rtl/fwrisc_decode.sv
+@@ -314,10 +314,23 @@ module fwrisc_decode #(
+ 					endcase
+ 				end
+ 				OP_TYPE_MDS: begin
+-					case (instr[14:12])
+-						3'b001: op_w = OP_SLL;
+-						default /*3'b101*/: op_w = (instr[30])?OP_SRA:OP_SRL;
+-					endcase
++					if (instr[6:0] == 7'b0110011 && instr[31:25] == 7'b0000001) begin
++						case (instr[14:12])
++							3'b000: op_w = OP_MUL;
++							3'b001: op_w = OP_MULSH;
++							3'b010: op_w = OP_MULHSU;
++							3'b011: op_w = OP_MULH;
++							3'b100: op_w = OP_DIV;
++							3'b101: op_w = OP_DIVU;
++							3'b110: op_w = OP_REM;
++							default /*3'b111*/: op_w = OP_REMU;
++						endcase
++					end else begin
++						case (instr[14:12])
++							3'b001: op_w = OP_SLL;
++							default /*3'b101*/: op_w = (instr[30])?OP_SRA:OP_SRL;
++						endcase
++					end
+ 				end
+ 				OP_TYPE_CSR: begin
+ 					case (instr[13:12])
+@@ -386,4 +399,3 @@ module fwrisc_decode #(
+ 
+ endmodule
+ 
+-
+diff --git a/rtl/fwrisc_mul_div_shift.sv b/rtl/fwrisc_mul_div_shift.sv
+index c7ece1e..58b3da0 100644
+--- a/rtl/fwrisc_mul_div_shift.sv
++++ b/rtl/fwrisc_mul_div_shift.sv
+@@ -46,15 +46,34 @@ module fwrisc_mul_div_shift #(
+ 	reg						working;
+ 	reg[63:0]				mul_res;
+ 	reg[31:0]				mul_tmp1;
+-	reg[31:0]				mul_tmp2;
++	reg[63:0]				mul_tmp2;
++	reg						mul_negate;
+ 	reg[62:0]				div_divisor;
+ 	reg[31:0]				div_dividend;
+ 	reg[31:0]				div_quotient;
+ 	reg[31:0]				div_msk;
+-	reg						div_sign;
++	reg						div_result_negate;
+ 	
+-	
+-	wire mul_tmp2_zero = (|mul_tmp2 == 0);
++	wire mul_signed_a_in = (op == OP_MULS || op == OP_MULSH || op == OP_MULHSU);
++	wire mul_signed_b_in = (op == OP_MULS || op == OP_MULSH);
++	wire[31:0] mul_a_magnitude_in = (mul_signed_a_in && in_a[31]) ? (~in_a + 32'd1) : in_a;
++	wire[31:0] mul_b_magnitude_in = (mul_signed_b_in && in_b[31]) ? (~in_b + 32'd1) : in_b;
++	wire[63:0] mul_accumulated = mul_res + (mul_tmp1[0] ? mul_tmp2 : 64'b0);
++	wire[63:0] mul_final = mul_negate ? (~mul_accumulated + 64'd1) : mul_accumulated;
++
++	wire div_signed_in = (op == OP_DIV || op == OP_REM);
++	wire[31:0] div_a_magnitude_in = (div_signed_in && in_a[31]) ? (~in_a + 32'd1) : in_a;
++	wire[31:0] div_b_magnitude_in = (div_signed_in && in_b[31]) ? (~in_b + 32'd1) : in_b;
++	wire div_step_subtract = (div_divisor <= {31'b0, div_dividend});
++	wire[31:0] div_dividend_next = div_step_subtract
++			? (div_dividend - div_divisor[31:0]) : div_dividend;
++	wire[31:0] div_quotient_next = div_step_subtract
++			? (div_quotient | div_msk) : div_quotient;
++	wire div_returns_quotient = (op_r == OP_DIV || op_r == OP_DIVU);
++	wire[31:0] div_unsigned_result = div_returns_quotient
++			? div_quotient_next : div_dividend_next;
++	wire[31:0] div_final = div_result_negate
++			? (~div_unsigned_result + 32'd1) : div_unsigned_result;
+ 	
+ 	always @(posedge clock) begin
+ 		if (reset) begin
+@@ -62,6 +81,16 @@ module fwrisc_mul_div_shift #(
+ 			out_valid <= 0;
+ 			working <= 0;
+ 			op_r <= 0;
++			shift_amt_r <= 0;
++			mul_res <= 0;
++			mul_tmp1 <= 0;
++			mul_tmp2 <= 0;
++			mul_negate <= 0;
++			div_divisor <= 0;
++			div_dividend <= 0;
++			div_quotient <= 0;
++			div_msk <= 0;
++			div_result_negate <= 0;
+ 		end else begin
+ 			if (in_valid) begin
+ 				op_r <= op;
+@@ -92,45 +121,29 @@ module fwrisc_mul_div_shift #(
+ 							out <= in_a;
+ 						end
+ 					end
+-					OP_MUL, OP_MULH: begin // mul/mulh
+-						if (ENABLE_MUL) begin
+-							mul_res <= 64'b0;
+-							mul_tmp1 <= in_a;
+-							mul_tmp2 <= in_b;
+-							shift_amt_r <= 5'd31;
+-						end
+-					end
+-					OP_MULS, OP_MULSH: begin // muls/mulsh
++					OP_MUL, OP_MULH, OP_MULS, OP_MULSH, OP_MULHSU: begin
+ 						if (ENABLE_MUL) begin
+ 							mul_res <= 64'b0;
+-							mul_tmp1 <= $signed(in_a);
+-							mul_tmp2 <= $signed(in_b);
++							mul_tmp1 <= mul_a_magnitude_in;
++							mul_tmp2 <= {32'b0, mul_b_magnitude_in};
++							mul_negate <= (mul_signed_a_in && in_a[31])
++									!= (mul_signed_b_in && in_b[31]);
+ 							shift_amt_r <= 5'd31;
+ 						end
+ 					end
+-					OP_DIV, OP_REM: begin 
++					OP_DIV, OP_DIVU, OP_REM, OP_REMU: begin
+ 						if (ENABLE_DIV) begin
+-							if (in_a[31]) begin
+-								div_dividend <= -in_a;
+-							end else begin
+-								div_dividend <= in_a;
+-							end
+-							if (in_b[31]) begin
+-								div_divisor <= (-in_b) << 31;
+-							end else begin
+-								div_divisor <= in_b << 31;
+-							end
++							div_dividend <= div_a_magnitude_in;
++							div_divisor <= {31'b0, div_b_magnitude_in} << 31;
++							div_quotient <= 0;
+ 							shift_amt_r <= 5'd31;
+ 							div_msk <= 'h8000_0000;
++							div_result_negate <= ((op == OP_DIV) && (|in_b)
++									&& (in_a[31] != in_b[31]))
++									|| ((op == OP_REM) && in_a[31]);
+ 						end
+ 					end
+ 				endcase
+-				if (op == OP_DIV) begin
+-					div_sign <= (in_a[31] != in_a[31]);
+-				end else begin
+-					// OP_REM and others
+-					div_sign <= in_a[31];
+-				end
+ 			end
+ 			
+ 			if (working) begin
+@@ -151,38 +164,34 @@ module fwrisc_mul_div_shift #(
+ 						end
+ 					end
+ 					
+-					OP_MUL, OP_MULS, OP_MULH, OP_MULSH: begin // mul
++					OP_MUL, OP_MULS, OP_MULH, OP_MULSH, OP_MULHSU: begin
+ 						if (ENABLE_MUL) begin
+-							if (mul_tmp1[0]) begin
+-								mul_res <= (mul_res + mul_tmp2);
+-							end
++							mul_res <= mul_accumulated;
+ 							mul_tmp2 <= (mul_tmp2 << 1);
+ 							mul_tmp1 <= (mul_tmp1 >> 1);
+-							if (op_r == OP_MUL || op_r == OP_MULS) begin // mul/muls
+-								out <= mul_res[31:0];
+-							end else begin // mulh/mulsh
+-								out <= mul_res[63:32];
++							if (shift_amt_r == 0) begin
++								if (op_r == OP_MUL || op_r == OP_MULS) begin
++									out <= mul_final[31:0];
++								end else begin
++									out <= mul_final[63:32];
++								end
+ 							end
+ 						end
+ 					end
+-					OP_DIV, OP_REM: begin
++					OP_DIV, OP_DIVU, OP_REM, OP_REMU: begin
+ 						if (ENABLE_DIV) begin
+-							if (div_divisor <= div_dividend) begin
+-								div_dividend <= div_dividend - div_divisor;
+-								div_quotient <= div_quotient | div_msk;
+-							end
++							div_dividend <= div_dividend_next;
++							div_quotient <= div_quotient_next;
+ 							div_divisor <= div_divisor >> 1;
+ 							div_msk <= div_msk >> 1;
+-							if (op == OP_DIV) begin
+-								out <= (div_sign)?-div_quotient:div_quotient;
+-							end else begin
+-								out <= (div_sign)?-div_dividend:div_dividend;
++							if (shift_amt_r == 0) begin
++								out <= div_final;
+ 							end
+ 						end
+ 					end
+ 				endcase
+ 		
+-				if (|shift_amt_r == 0) begin
++				if (shift_amt_r == 0) begin
+ 					// We're done
+ 					working <= 1'b0;
+ 					out_valid <= 1'b1;
+@@ -196,5 +205,3 @@ module fwrisc_mul_div_shift #(
+ 	end
+ 
+ endmodule
+-
+-
+diff --git a/rtl/fwrisc_mul_div_shift_op.svh b/rtl/fwrisc_mul_div_shift_op.svh
+index 5c34795..fe0690a 100644
+--- a/rtl/fwrisc_mul_div_shift_op.svh
++++ b/rtl/fwrisc_mul_div_shift_op.svh
+@@ -26,7 +26,10 @@ OP_MUL     = (OP_SRA + 4'd1),
+ OP_MULH    = (OP_MUL + 4'd1),
+ OP_MULS    = (OP_MULH + 4'd1),
+ OP_MULSH   = (OP_MULS + 4'd1),
+-OP_DIV     = (OP_MULSH + 4'd1),
+-OP_REM     = (OP_DIV + 4'd1),
+-OP_NUM_MDS = (OP_REM + 4'd1)
++OP_MULHSU  = (OP_MULSH + 4'd1),
++OP_DIV     = (OP_MULHSU + 4'd1),
++OP_DIVU    = (OP_DIV + 4'd1),
++OP_REM     = (OP_DIVU + 4'd1),
++OP_REMU    = (OP_REM + 4'd1),
++OP_NUM_MDS = (OP_REMU + 4'd1)
+ ;
+diff --git a/synth/microsemi/synplify/fwrisc/fwrisc_mul_div_shift_op.svh b/synth/microsemi/synplify/fwrisc/fwrisc_mul_div_shift_op.svh
+index d29b8cf..7e72a52 100644
+--- a/synth/microsemi/synplify/fwrisc/fwrisc_mul_div_shift_op.svh
++++ b/synth/microsemi/synplify/fwrisc/fwrisc_mul_div_shift_op.svh
+@@ -7,7 +7,10 @@ OP_MUL     = (OP_SRA + 4'd1),
+ OP_MULH    = (OP_MUL + 4'd1),
+ OP_MULS    = (OP_MULH + 4'd1),
+ OP_MULSH   = (OP_MULS + 4'd1),
+-OP_DIV     = (OP_MULSH + 4'd1),
+-OP_REM     = (OP_DIV + 4'd1),
+-OP_NUM_MDS = (OP_REM + 4'd1)
+-;
+\ No newline at end of file
++OP_MULHSU  = (OP_MULSH + 4'd1),
++OP_DIV     = (OP_MULHSU + 4'd1),
++OP_DIVU    = (OP_DIV + 4'd1),
++OP_REM     = (OP_DIVU + 4'd1),
++OP_REMU    = (OP_REM + 4'd1),
++OP_NUM_MDS = (OP_REMU + 4'd1)
++;

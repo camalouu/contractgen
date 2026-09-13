@@ -9,9 +9,9 @@ mvn clean package
 # platform="SODOR_2_TEST"
 # platform="CVA6_TEST"
 # platform="DARKRISCV_2_TEST"
-# platform="FWRISC_TEST"
+platform="FWRISC_TEST"
 # platform="CV32E40P_TEST"
-platform="CV32E40S_TEST"
+# platform="CV32E40S_TEST"
 count=10000
 
 output_dir="/home/yosys/project/results/${platform,,}-${count}-seed35"
@@ -24,8 +24,8 @@ java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main synth_new \
   -t 8 \
   -s 35 \
   --output-dir "$output_dir" \
-  --disable-adaptive-skipping \
-  --cv32e40s-data-independent-timing=on
+  --disable-adaptive-skipping
+  # --cv32e40s-data-independent-timing=on
 
 # java -cp target/contractgen-1.0-SNAPSHOT.jar contractgen.Main export_tests \
 #   -p "$platform" \

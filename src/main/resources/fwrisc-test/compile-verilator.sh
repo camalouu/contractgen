@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_DIR="$1"
-OUT_DIR="$2"
-CORE_ROOT="${CONTRACT_FWRISC_CORE_ROOT:-$SOURCE_DIR/core}"
+SOURCE_DIR="$(realpath "$1")"
+mkdir -p "$2"
+OUT_DIR="$(realpath "$2")"
+CORE_SOURCE_ROOT="${CONTRACT_FWRISC_CORE_ROOT:-$SOURCE_DIR/core}"
+CORE_PATCH="$SOURCE_DIR/patches/rv32m-correctness.patch"
 COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-/home/yosys/resources/attacker-test-common}"
 PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-/home/yosys/project/src/main/resources/attacker-test-common}"
 if [[ -d "$COMMON_DIR/verif" ]]; then COMMON_ROOT="$COMMON_DIR"; else COMMON_ROOT="$PROJECT_COMMON_DIR"; fi
-if [[ ! -f "$CORE_ROOT/rtl/fwrisc.sv" || ! -d "$COMMON_ROOT/verif" ]]; then
+if [[ ! -f "$CORE_SOURCE_ROOT/rtl/fwrisc.sv" || ! -f "$CORE_PATCH" || ! -d "$COMMON_ROOT/verif" ]]; then
   echo "Cannot find FWRISC RTL or shared attacker-harness resources." >&2
   exit 1
 fi
 
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
+
+# Keep the pinned submodule pristine. Every build gets a disposable core copy
+# with the contract-synthesis RV32M corrections applied to it.
+CORE_ROOT="$OUT_DIR/core-patched"
+mkdir -p "$CORE_ROOT"
+cp -a "$CORE_SOURCE_ROOT/." "$CORE_ROOT/"
+patch --batch --forward --directory="$CORE_ROOT" -p1 < "$CORE_PATCH"
 
 RTL_SOURCES=(
   "$CORE_ROOT"/rtl/fwrisc_regfile.sv "$CORE_ROOT"/rtl/fwrisc_mul_div_shift.sv
