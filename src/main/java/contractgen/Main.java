@@ -10,6 +10,7 @@ import contractgen.riscv.AdaptiveAttackerRunner;
 import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.SimpleAttackerHarnessClient;
 import contractgen.riscv.SimpleTestMARCH;
+import contractgen.riscv.cv32e40s_test.CV32E40STestAttackerClient;
 import contractgen.riscv.darkriscv.DARKRISCV_2;
 import contractgen.riscv.darkriscv.DARKRISCV_3;
 import contractgen.riscv.hazard3_test.Hazard3Test;
@@ -329,6 +330,12 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--cv32e40p-test-lib"}, description = "Path to libcontract_cv32e40p_test_attacker.so.")
     File cv32e40pTestLib;
 
+    @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so.")
+    File cv32e40sTestLib;
+
+    @Option(names = {"--cv32e40s-data-independent-timing"}, description = "CV32E40S timing protection: ${COMPLETION-CANDIDATES}.", defaultValue = "off")
+    CV32E40STestAttackerClient.TimingMode cv32e40sTiming = CV32E40STestAttackerClient.TimingMode.off;
+
     @Option(names = {"--spike-isa"}, description = "Spike ISA string.", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
 
@@ -408,6 +415,8 @@ class SynthesizeNew implements Callable<Integer> {
         runner.darkriscv2TestLib = darkriscv2TestLib;
         runner.fwriscTestLib = fwriscTestLib;
         runner.cv32e40pTestLib = cv32e40pTestLib;
+        runner.cv32e40sTestLib = cv32e40sTestLib;
+        runner.cv32e40sTiming = cv32e40sTiming;
         runner.spikeIsa = spikeIsa;
         runner.processor = processor;
         runner.negativeSignatureThreshold = negativeSignatureThreshold;
@@ -1043,7 +1052,8 @@ enum ReplayAttackerHarness {
     SODOR_2_TEST,
     DARKRISCV_2_TEST,
     FWRISC_TEST,
-    CV32E40P_TEST
+    CV32E40P_TEST,
+    CV32E40S_TEST
 }
 
 @Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
@@ -1101,6 +1111,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--cv32e40p-test-lib"}, description = "Path to libcontract_cv32e40p_test_attacker.so. Defaults to CONTRACT_CV32E40P_TEST_LIB or the CV32E40P_TEST compilation output.")
     File cv32e40pTestLib;
 
+    @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so. Defaults to CONTRACT_CV32E40S_TEST_LIB or the CV32E40S_TEST compilation output.")
+    File cv32e40sTestLib;
+
+    @Option(names = {"--cv32e40s-data-independent-timing"}, description = "CV32E40S timing protection: ${COMPLETION-CANDIDATES}.", defaultValue = "off")
+    CV32E40STestAttackerClient.TimingMode cv32e40sTiming = CV32E40STestAttackerClient.TimingMode.off;
+
     @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
     ReplayAttackerHarness processor;
 
@@ -1140,6 +1156,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
         }
         validateHarnessIsa(processor, isa);
+        if (processor != ReplayAttackerHarness.CV32E40S_TEST
+                && cv32e40sTiming == CV32E40STestAttackerClient.TimingMode.on) {
+            throw new IllegalArgumentException("--cv32e40s-data-independent-timing=on requires CV32E40S_TEST.");
+        }
+        if (processor == ReplayAttackerHarness.CV32E40S_TEST) {
+            System.out.println(CV32E40STestAttackerClient.configuration(cv32e40sTiming));
+        }
         this.sourceDescription = sourceDescription;
         Set<RISCV_OBSERVATION_TYPE> allowed = RISCV_OBSERVATION_TYPE.getGroups(template);
 
@@ -1219,6 +1242,11 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     testCases, allowed, "cv32e40p-test", "CV32E40P_TEST",
                     cv32e40pTestLib, "CONTRACT_CV32E40P_TEST_LIB",
                     "/home/yosys/output/cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so");
+            case CV32E40S_TEST -> createHarnessSetup(
+                    new SimpleTestMARCH(new ILPUpdater(), testCases, allowed, isa, "cv32e40s-test", "CV32E40S_TEST"),
+                    cv32e40sTestLib, "CONTRACT_CV32E40S_TEST_LIB",
+                    "/home/yosys/output/cv32e40s-test/compiled/libcontract_cv32e40s_test_attacker.so",
+                    path -> new CV32E40STestAttackerClient(path, cv32e40sTiming), false, true);
         };
     }
 
@@ -1339,6 +1367,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
                 sb.append("\tProcessor: ").append(attackerHarnessName).append("\n");
                 sb.append("\tAtom Source: Spike\n");
+                if (processor == ReplayAttackerHarness.CV32E40S_TEST) {
+                    sb.append('\t').append(CV32E40STestAttackerClient.configuration(cv32e40sTiming)).append('\n');
+                }
                 sb.append("\tISA: ").append(isa).append("\n");
                 sb.append("\tTemplate: ").append(template).append("\n");
                 sb.append("\tCount: ").append(tests.size()).append("\n");

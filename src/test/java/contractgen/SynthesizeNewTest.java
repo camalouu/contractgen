@@ -13,6 +13,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SynthesizeNewTest {
     @Test
+    void parsesCv32e40sOptionsInBothNewWorkflowCommands() {
+        var direct = new SynthesizeNew();
+        new picocli.CommandLine(direct).parseArgs("-p", "CV32E40S_TEST", "-i", "BASE,M",
+                "-c", "BASE", "-n", "1", "-t", "1", "-s", "1", "-o", "unused.json",
+                "--cv32e40s-test-lib", "/tmp/cv32e40s.so", "--cv32e40s-data-independent-timing=on");
+        assertEquals(ReplayAttackerHarness.CV32E40S_TEST, direct.processor);
+        assertEquals(contractgen.riscv.cv32e40s_test.CV32E40STestAttackerClient.TimingMode.on, direct.cv32e40sTiming);
+        assertEquals(new File("/tmp/cv32e40s.so"), direct.cv32e40sTestLib);
+
+        var replay = new ReplaySynthesizeSpike();
+        new picocli.CommandLine(replay).parseArgs("-p", "CV32E40S_TEST", "-i", "BASE,M",
+                "-c", "BASE", "-t", "1", "-e", "unused-tests.json", "-o", "unused.json");
+        assertEquals(contractgen.riscv.cv32e40s_test.CV32E40STestAttackerClient.TimingMode.off, replay.cv32e40sTiming);
+        ReplaySynthesizeSpike.validateHarnessIsa(replay.processor, replay.isa);
+    }
+
+    @Test
     void derivesTestcasePathBesideContractOutput() {
         assertEquals(
                 Path.of("results/hazard3-testcases.json"),

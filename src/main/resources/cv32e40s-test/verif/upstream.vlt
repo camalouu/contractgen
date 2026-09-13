@@ -1,0 +1,4 @@
+`verilator_config
+// Upstream assigns constant unimplemented counters and sequential implemented
+// counters to disjoint slices of the same packed array.
+lint_off -rule BLKANDNBLK -file "*/cv32e40s_cs_registers.sv" -match "*mhpmcounter_q*"

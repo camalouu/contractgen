@@ -41,6 +41,10 @@ public final class SimpleTestMARCH extends IBEXTest {
 
     @Override
     public void compile() {
+        String configuredTimeout = System.getenv("CONTRACT_BUILD_TIMEOUT_SECONDS");
+        int timeout = configuredTimeout == null || configuredTimeout.isBlank()
+                ? 240 : Integer.parseInt(configuredTimeout);
+        if (timeout <= 0) throw new IllegalArgumentException("CONTRACT_BUILD_TIMEOUT_SECONDS must be positive");
         String templatePath = "/home/yosys/resources/" + resourceName + "/";
         try {
             copyFileOrFolder(Path.of(templatePath).toFile(), Path.of(BASE_PATH).toFile(), REPLACE_EXISTING);
@@ -50,7 +54,7 @@ public final class SimpleTestMARCH extends IBEXTest {
         String output = runScript(
                 "/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH,
                 true,
-                240);
+                timeout);
         if (output == null || output.contains("Process exited with code")) {
             throw new IllegalStateException(displayName + " compilation failed:\n" + tail(output, 120));
         }
