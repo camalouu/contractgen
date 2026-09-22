@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$1" || exit
 SOURCE_DIR="$PWD"
-PROJECT_RESOURCE_DIR="${CONTRACT_IBEX_TEST_RESOURCE_ROOT:-/home/yosys/project/src/main/resources/ibex-test}"
+PROJECT_RESOURCE_DIR="${CONTRACT_IBEX_TEST_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/ibex-test}"
 export LR_VERIF_OUT_DIR=$2
 rm -rf "$LR_VERIF_OUT_DIR"
 mkdir -p "$LR_VERIF_OUT_DIR"
@@ -89,12 +89,12 @@ VERILATOR_FLAGS="-DUSEVERILATOR -DRVFI -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH
 # Compatibility executable used by the existing file-based Java harness.
 # It reads init_*.dat/memory_*.dat/count.dat in C++ instead of using $readmemh.
 verilator --cc $VERILATOR_FLAGS --exe sim_main.cpp ibex_test_runtime.cpp $VERILOG_SOURCES
-make -j -C obj_dir/ -f Vtop.mk Vtop
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir/ -f Vtop.mk Vtop
 cp obj_dir/Vtop ibex
 
 # Batched shared library used by the new Java fast path.
 verilator --cc $VERILATOR_FLAGS --Mdir obj_dir_shared --exe ibex_test_runtime.cpp ibex_test_shared.cpp \
   -CFLAGS "-fPIC" -LDFLAGS "-shared -fPIC" -o libcontract_ibex_test_attacker.so $VERILOG_SOURCES
-make -j -C obj_dir_shared/ -f Vtop.mk libcontract_ibex_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared/ -f Vtop.mk libcontract_ibex_test_attacker.so
 cp obj_dir_shared/libcontract_ibex_test_attacker.so libcontract_ibex_test_attacker.so
 test -f libcontract_ibex_test_attacker.so

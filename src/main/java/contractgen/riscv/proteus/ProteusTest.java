@@ -16,15 +16,15 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /** Attacker-only Proteus integration; Spike remains the contract-atom source. */
 public final class ProteusTest extends IBEXTest {
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/proteus-test/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("proteus-test/").toString() + "/";
 
     public ProteusTest(Updater updater, TestCases testCases,
                        Set<RISCV_OBSERVATION_TYPE> allowedObservations,
                        Set<RISCV_SUBSET> isa, boolean isSP) {
         super(updater, testCases, allowedObservations, isa, isSP);
-        BASE_PATH = "/home/yosys/output/proteus-test/generated/";
-        COMPILATION_PATH = "/home/yosys/output/proteus-test/compiled/";
-        SIMULATION_PATH = "/home/yosys/output/proteus-test/simulation/";
+        BASE_PATH = contractgen.util.RuntimePaths.work("proteus-test/generated/").toString() + "/";
+        COMPILATION_PATH = contractgen.util.RuntimePaths.work("proteus-test/compiled/").toString() + "/";
+        SIMULATION_PATH = contractgen.util.RuntimePaths.work("proteus-test/simulation/").toString() + "/";
     }
 
     @Override
@@ -34,8 +34,7 @@ public final class ProteusTest extends IBEXTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh "
-                + BASE_PATH + " " + COMPILATION_PATH, true, 240);
+        String output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), true, 240);
         if (output == null || output.contains("Process exited with code")) {
             throw new IllegalStateException("PROTEUS_TEST compilation failed:\n" + tail(output, 120));
         }

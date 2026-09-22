@@ -34,9 +34,9 @@ public final class SimpleTestMARCH extends IBEXTest {
         super(updater, testCases, allowedObservations, isa, false);
         this.resourceName = resourceName;
         this.displayName = displayName;
-        BASE_PATH = "/home/yosys/output/" + resourceName + "/generated/";
-        COMPILATION_PATH = "/home/yosys/output/" + resourceName + "/compiled/";
-        SIMULATION_PATH = "/home/yosys/output/" + resourceName + "/simulation/";
+        BASE_PATH = contractgen.util.RuntimePaths.work(resourceName + "/generated").toString() + "/";
+        COMPILATION_PATH = contractgen.util.RuntimePaths.work(resourceName + "/compiled").toString() + "/";
+        SIMULATION_PATH = contractgen.util.RuntimePaths.work(resourceName + "/simulation").toString() + "/";
     }
 
     @Override
@@ -45,14 +45,14 @@ public final class SimpleTestMARCH extends IBEXTest {
         int timeout = configuredTimeout == null || configuredTimeout.isBlank()
                 ? 240 : Integer.parseInt(configuredTimeout);
         if (timeout <= 0) throw new IllegalArgumentException("CONTRACT_BUILD_TIMEOUT_SECONDS must be positive");
-        String templatePath = "/home/yosys/resources/" + resourceName + "/";
+        String templatePath = contractgen.util.RuntimePaths.resource(resourceName).toString() + "/";
         try {
             copyFileOrFolder(Path.of(templatePath).toFile(), Path.of(BASE_PATH).toFile(), REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
         String output = runScript(
-                "/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH,
+                java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH),
                 true,
                 timeout);
         if (output == null || output.contains("Process exited with code")) {

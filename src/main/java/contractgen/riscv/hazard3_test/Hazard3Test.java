@@ -16,15 +16,15 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /** Attacker-only Hazard3 integration. Spike supplies all contract atoms. */
 public final class Hazard3Test extends IBEXTest {
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/hazard3-test/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("hazard3-test/").toString() + "/";
 
     public Hazard3Test(Updater updater, TestCases testCases,
                        Set<RISCV_OBSERVATION_TYPE> allowedObservations,
                        Set<RISCV_SUBSET> isa, boolean isSP) {
         super(updater, testCases, allowedObservations, isa, isSP);
-        BASE_PATH = "/home/yosys/output/hazard3-test/generated/";
-        COMPILATION_PATH = "/home/yosys/output/hazard3-test/compiled/";
-        SIMULATION_PATH = "/home/yosys/output/hazard3-test/simulation/";
+        BASE_PATH = contractgen.util.RuntimePaths.work("hazard3-test/generated/").toString() + "/";
+        COMPILATION_PATH = contractgen.util.RuntimePaths.work("hazard3-test/compiled/").toString() + "/";
+        SIMULATION_PATH = contractgen.util.RuntimePaths.work("hazard3-test/simulation/").toString() + "/";
     }
 
     @Override
@@ -34,8 +34,7 @@ public final class Hazard3Test extends IBEXTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh "
-                + BASE_PATH + " " + COMPILATION_PATH, true, 240);
+        String output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), true, 240);
         if (output == null || output.contains("Process exited with code")) {
             throw new IllegalStateException("HAZARD3_TEST compilation failed:\n" + tail(output, 120));
         }

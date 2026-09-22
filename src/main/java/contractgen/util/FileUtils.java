@@ -36,11 +36,15 @@ public class FileUtils {
      * @throws IOException On filesystem errors.
      */
     private static void copyFolder(File source, File dest, CopyOption... options) throws IOException {
+        if (Files.isSymbolicLink(dest.toPath())) {
+            throw new IOException("Refusing to copy into a symbolic link: " + dest);
+        }
         if (!dest.exists()) {
             boolean success = dest.mkdirs();
             if (!success) throw new IOException("Failed to create directory");
         }
         File[] contents = source.listFiles();
+        if (contents == null) throw new IOException("Cannot list directory: " + source);
         if (contents != null) {
             for (File f : contents) {
                 File newFile = new File(dest.getAbsolutePath() + File.separator + f.getName());
@@ -57,9 +61,13 @@ public class FileUtils {
      * @throws IOException On filesystem errors.
      */
     private static void copyFile(File source, File dest, CopyOption... options) throws IOException {
-        if (Files.isSymbolicLink(source.toPath()))
-            return;
-        Files.copy(source.toPath(), dest.toPath(), options);
+        // Materialize links from assembled resources; never retain a link into
+        // the immutable store in a directory that will be patched later.
+        if (Files.isSymbolicLink(dest.toPath())) Files.delete(dest.toPath());
+        Files.copy(source.toPath().toRealPath(), dest.toPath(), options);
+        if (!dest.setWritable(true, true)) {
+            throw new IOException("Cannot make resource copy writable: " + dest);
+        }
     }
 
     /**

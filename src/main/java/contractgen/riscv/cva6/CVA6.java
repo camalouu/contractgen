@@ -28,19 +28,19 @@ public class CVA6 extends MARCH {
     /**
      * The path where to find the template.
      */
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/cva6/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("cva6/").toString() + "/";
     /**
      * The path where to store the instantiated template.
      */
-    protected String BASE_PATH = "/home/yosys/output/cva6/generated/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("cva6/generated/").toString() + "/";
     /**
      * The path where the compiled module is to be stored.
      */
-    protected String COMPILATION_PATH = "/home/yosys/output/cva6/compiled/";
+    protected String COMPILATION_PATH = contractgen.util.RuntimePaths.work("cva6/compiled/").toString() + "/";
     /**
      * The path where simulation takes place.
      */
-    protected String SIMULATION_PATH = "/home/yosys/output/cva6/simulation/";
+    protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("cva6/simulation/").toString() + "/";
 
     private final boolean useVerilator;
 
@@ -143,7 +143,7 @@ public class CVA6 extends MARCH {
         }
         // Enable this section to regenerate the CVA6 Verilog file, disabled for performance reasons, using precompiled cva6.v instead
         /*
-        runScript("/bin/bash " + BASE_PATH + "generate-verilog.sh " + BASE_PATH + " " + BASE_PATH + "temp", false, 100000);
+        runScript(java.util.List.of("bash", BASE_PATH + "generate-verilog.sh", BASE_PATH, BASE_PATH + "temp"), java.nio.file.Path.of(BASE_PATH), false, 100000);
         try {
             copyFileOrFolder(Path.of(BASE_PATH + "temp/cva6.v").toFile(), Path.of(BASE_PATH + "cva6.v").toFile(), REPLACE_EXISTING);
         } catch (IOException e) {
@@ -152,11 +152,11 @@ public class CVA6 extends MARCH {
          */
         String output;
         if (useVerilator) {
-            System.out.println("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH);
-            output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+            System.out.println(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH));
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), false, 240);
         } else {
-            System.out.println("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH);
-            output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 120);  
+            System.out.println(java.util.List.of("bash", BASE_PATH + "compile.sh", BASE_PATH, COMPILATION_PATH));
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), false, 120);
         }
         System.out.println(output);
         System.out.println("Compilation finished.");

@@ -100,8 +100,13 @@ public final class SpikeAtomParallelRunner {
             Path input = directory.resolve("testcases.json");
             Path output = directory.resolve("atoms.json");
             Files.writeString(input, RISCVTestCaseIO.toJSON(tests.subList(chunk.start(), chunk.end())));
-            Process process = new ProcessBuilder(
-                    javaExecutable(),
+            List<String> command = new ArrayList<>();
+            command.add(javaExecutable());
+            for (String property : List.of("jna.boot.library.path", "jna.library.path", "java.library.path")) {
+                String value = System.getProperty(property);
+                if (value != null) command.add("-D" + property + "=" + value);
+            }
+            command.addAll(List.of(
                     "-cp", System.getProperty("java.class.path"),
                     "contractgen.Main",
                     "spike_atoms_worker",
@@ -109,7 +114,8 @@ public final class SpikeAtomParallelRunner {
                     "--output", output.toString(),
                     "--spike-lib", spikeLibrary.toString(),
                     "--spike-isa", spikeIsa
-            ).redirectErrorStream(true).start();
+            ));
+            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
             boolean finished = process.waitFor(10, TimeUnit.MINUTES);
             String processOutput = new String(process.getInputStream().readAllBytes());
             if (!finished) {

@@ -1,0 +1,13 @@
+--- a/src/main/scala/riscv/PipelineData.scala
++++ b/src/main/scala/riscv/PipelineData.scala
+@@ -3,7 +3,9 @@
+ import spinal.core._
+ 
+ class PipelineData[T <: Data](val dataType: HardType[T]) {
+-  def name: String = getClass.getSimpleName.takeWhile(_ != '$')
++  // Scala 2.11 nested objects can have InnerClasses metadata rejected by
++  // current Java 8 updates. Derive the same object name from the binary name.
++  def name: String = getClass.getName.stripSuffix("$").split("\\$").last.split("\\.").last
+ 
+   override def toString: String = name
+ }

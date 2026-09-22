@@ -2,7 +2,7 @@ set -ax
 
 cd "$1" || exit
 export LR_VERIF_OUT_DIR=$2
-rm -r "$LR_VERIF_OUT_DIR"
+rm -rf "$LR_VERIF_OUT_DIR"
 mkdir -p "$LR_VERIF_OUT_DIR"
 
 case "$3" in

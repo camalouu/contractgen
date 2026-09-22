@@ -24,10 +24,10 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
  */
 public class HAZARD3 extends MARCH {
 
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/hazard3/";
-    protected String BASE_PATH = "/home/yosys/output/hazard3/generated/";
-    protected String COMPILATION_PATH = "/home/yosys/output/hazard3/compiled/";
-    protected String SIMULATION_PATH = "/home/yosys/output/hazard3/simulation/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("hazard3/").toString() + "/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("hazard3/generated/").toString() + "/";
+    protected String COMPILATION_PATH = contractgen.util.RuntimePaths.work("hazard3/compiled/").toString() + "/";
+    protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("hazard3/simulation/").toString() + "/";
 
     private final boolean useVerilator;
 
@@ -114,9 +114,9 @@ public class HAZARD3 extends MARCH {
         // No inline contract replacement here, verilator config handles the rest.
         String output;
         if (useVerilator) {
-            output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), false, 240);
         } else {
-            output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), false, 240);
         }
         System.out.println(output);
         System.out.println("Compilation finished.");

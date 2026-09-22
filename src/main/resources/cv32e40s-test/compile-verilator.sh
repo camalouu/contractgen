@@ -6,7 +6,7 @@ OUT_DIR="$(realpath "$2")"
 CORE_ROOT="${CONTRACT_CV32E40S_CORE_ROOT:-$SOURCE_DIR/core}"
 COMMON_ROOT="${CONTRACT_ATTACKER_COMMON_ROOT:-$SOURCE_DIR/../attacker-test-common}"
 if [[ ! -d "$COMMON_ROOT/verif" ]]; then
-  COMMON_ROOT=/home/yosys/resources/attacker-test-common
+  COMMON_ROOT=${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common
 fi
 test -f "$CORE_ROOT/rtl/cv32e40s_core.sv"
 test -f "$COMMON_ROOT/verif/clk_sync.sv"

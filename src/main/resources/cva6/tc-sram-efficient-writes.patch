@@ -1,0 +1,49 @@
+--- a/vendor/pulp-platform/tech_cells_generic/src/rtl/tc_sram.sv
++++ b/vendor/pulp-platform/tech_cells_generic/src/rtl/tc_sram.sv
+@@ -83,6 +83,18 @@
+   // hold the read address when no read access is made
+   addr_t [NumPorts-1:0] r_addr_q;
+ 
++  // Collapse byte enables into one word mask so synthesis creates one dynamic
++  // SRAM write instead of one full-array update for every byte lane.
++  data_t [NumPorts-1:0] write_mask;
++  always_comb begin
++    write_mask = '0;
++    for (int unsigned i = 0; i < NumPorts; i++) begin
++      for (int unsigned j = 0; j < BeWidth; j++) begin
++        write_mask[i][j*ByteWidth+:ByteWidth] = {ByteWidth{be_i[i][j]}};
++      end
++    end
++  end
++
+   // SRAM simulation initialization
+   data_t init_val[NumWords-1:0];
+   initial begin : proc_sram_init
+@@ -138,11 +150,8 @@
+           if (req_i[i]) begin
+             if (we_i[i]) begin
+               // update value when write is set at clock
+-              for (int unsigned j = 0; j < BeWidth; j++) begin
+-                if (be_i[i][j]) begin
+-                  sram[addr_i[i]][j*ByteWidth+:ByteWidth] <= wdata_i[i][j*ByteWidth+:ByteWidth];
+-                end
+-              end
++              sram[addr_i[i]] <= (sram[addr_i[i]] & ~write_mask[i])
++                                  | (wdata_i[i] & write_mask[i]);
+             end else begin
+               // otherwise update read address for subsequent non request cycles
+               r_addr_q[(i * Latency) :+ Latency] <= addr_i[i];
+@@ -179,11 +188,8 @@
+           if (req_i[i]) begin
+             if (we_i[i]) begin
+               // update value when write is set at clock
+-              for (int unsigned j = 0; j < BeWidth; j++) begin
+-                if (be_i[i][j]) begin
+-                  sram[addr_i[i]][j*ByteWidth+:ByteWidth] <= wdata_i[i][j*ByteWidth+:ByteWidth];
+-                end
+-              end
++              sram[addr_i[i]] <= (sram[addr_i[i]] & ~write_mask[i])
++                                  | (wdata_i[i] & write_mask[i]);
+             end else begin
+               // otherwise update read address for subsequent non request cycles
+               r_addr_q[i] <= addr_i[i];

@@ -22,9 +22,61 @@ Eventually, these results are used to synthesize a contract using [Google OR-Too
 
 ## Getting started
 
-To get started, have a look at the main method of the `ContractGen` class.
+The supported environment is an x86-64 Linux system with Nix and flakes enabled.
+All source revisions, build tools, Java dependencies, native libraries, and RTL
+inputs are locked by `flake.lock`.
 
-To start contract generation, use the provided `docker-compose.yml` in the `resources` directory.
+```sh
+nix build
+nix run . -- --help
+./run-nix.sh --help
+```
+
+`nix run . --` accepts the existing CLI commands and options. For example, a
+small attacker-harness synthesis run is:
+
+```sh
+nix run . -- synth_new \
+  --processor IBEX_TEST \
+  --isa BASE,M \
+  --contract BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
+  -n 100 -t 8 -s 35 \
+  --output-dir results/ibex-test-100-seed35
+```
+
+The packaged launcher uses cached Spike and attacker libraries. It writes
+temporary compilation and simulation files below `./results/.work` by default;
+set `CONTRACTGEN_WORK_ROOT` to use another writable location. Explicit CLI
+library paths such as `--spike-lib` and `--ibex-test-lib` take precedence over
+the corresponding `CONTRACT_*_LIB` environment variables.
+
+Use the development shell for Java, harness, legacy simulator, or formal work:
+
+```sh
+nix develop
+mvn -Dcontractgen.build.directory=/tmp/contractgen-build test
+```
+
+The alternate Maven build directory avoids changing an existing `target/` from
+an older environment. The shell provides JDK 21 while Maven emits Java 18
+compatible bytecode.
+
+Independent build targets include:
+
+```sh
+nix build .#spike
+nix build .#attacker-cva6
+nix build .#proteus-rtl
+nix build .#cva6-verilog
+nix flake check
+```
+
+The nine attacker packages are `attacker-ibex`, `attacker-cva6`,
+`attacker-hazard3`, `attacker-proteus`, `attacker-sodor-2`,
+`attacker-darkriscv-2`, `attacker-fwrisc`, `attacker-cv32e40p`, and
+`attacker-cv32e40s`. RTL regeneration produces store artifacts; copying one
+back into `src/main/resources` is an explicit review step. See
+[`nix/README.md`](nix/README.md) for package and contributor details.
 
 The results mentioned in the paper can be found on [Zenodo](https://doi.org/10.5281/zenodo.10491534).
 

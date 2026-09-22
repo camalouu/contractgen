@@ -43,19 +43,19 @@ IBEX extends MARCH {
     /**
      * The path where to find the template.
      */
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/ibex/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("ibex/").toString() + "/";
     /**
      * The path where to store the instantiated template.
      */
-    protected String BASE_PATH = "/home/yosys/output/ibex/generated/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("ibex/generated/").toString() + "/";
     /**
      * The path where the compiled module is to be stored.
      */
-    protected String COMPILATION_PATH = "/home/yosys/output/ibex/compiled/";
+    protected String COMPILATION_PATH = contractgen.util.RuntimePaths.work("ibex/compiled/").toString() + "/";
     /**
      * The path where simulation takes place.
      */
-    protected String SIMULATION_PATH = "/home/yosys/output/ibex/simulation/";
+    protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("ibex/simulation/").toString() + "/";
 
     private final VARIANT VARIANT;
     private final boolean useVerilator;
@@ -167,9 +167,9 @@ IBEX extends MARCH {
         }
         String output;
         if (useVerilator) {
-            output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH + " " + VARIANT, false, 240);
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH, VARIANT.toString()), java.nio.file.Path.of(BASE_PATH), false, 240);
         } else {
-            output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH + " " + VARIANT, false, 240);
+            output = runScript(java.util.List.of("bash", BASE_PATH + "compile.sh", BASE_PATH, COMPILATION_PATH, VARIANT.toString()), java.nio.file.Path.of(BASE_PATH), false, 240);
         }
         System.out.println(output);
         System.out.println("Compilation finished.");

@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$1" || exit
 SOURCE_DIR="$PWD"
-ORIGINAL_CVA6_RESOURCE_DIR="${CONTRACT_CVA6_RESOURCE_ROOT:-/home/yosys/resources/cva6}"
-PROJECT_CVA6_RESOURCE_DIR="${CONTRACT_CVA6_PROJECT_RESOURCE_ROOT:-/home/yosys/project/src/main/resources/cva6}"
+ORIGINAL_CVA6_RESOURCE_DIR="${CONTRACT_CVA6_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/cva6}"
+PROJECT_CVA6_RESOURCE_DIR="${CONTRACT_CVA6_PROJECT_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/cva6}"
 export LR_VERIF_OUT_DIR=$2
 rm -rf "$LR_VERIF_OUT_DIR"
 mkdir -p "$LR_VERIF_OUT_DIR"
@@ -13,11 +13,11 @@ copy_required() {
   local rel="$1"
   local dest="$2"
   if [[ -e "$SOURCE_DIR/$rel" ]]; then
-    cp -r "$SOURCE_DIR/$rel" "$dest"
+    cp -rL --no-preserve=mode "$SOURCE_DIR/$rel" "$dest"
   elif [[ -e "$ORIGINAL_CVA6_RESOURCE_DIR/$rel" ]]; then
-    cp -r "$ORIGINAL_CVA6_RESOURCE_DIR/$rel" "$dest"
+    cp -rL --no-preserve=mode "$ORIGINAL_CVA6_RESOURCE_DIR/$rel" "$dest"
   elif [[ -e "$PROJECT_CVA6_RESOURCE_DIR/$rel" ]]; then
-    cp -r "$PROJECT_CVA6_RESOURCE_DIR/$rel" "$dest"
+    cp -rL --no-preserve=mode "$PROJECT_CVA6_RESOURCE_DIR/$rel" "$dest"
   else
     echo "Missing required cva6-test resource: $rel" >&2
     echo "Checked: $SOURCE_DIR/$rel" >&2
@@ -160,11 +160,11 @@ VERILATOR_COMMON=(
 )
 
 verilator "${VERILATOR_COMMON[@]}" --Mdir obj_dir --exe "$LR_VERIF_OUT_DIR"/sim_main.cpp "$LR_VERIF_OUT_DIR"/cva6_test_runtime.cpp -LDFLAGS "-lpthread" &> "$LR_VERIF_OUT_DIR"/compile.log
-make -j -C obj_dir/ -f Vtop.mk Vtop
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir/ -f Vtop.mk Vtop
 cp obj_dir/Vtop cva6-test
 
 verilator "${VERILATOR_COMMON[@]}" --Mdir obj_dir_shared --exe "$LR_VERIF_OUT_DIR"/cva6_test_runtime.cpp "$LR_VERIF_OUT_DIR"/cva6_test_shared.cpp \
   -CFLAGS "-fPIC -I/include -I/share/verilator/include/vltstd -std=c++17 -O3 -DVL_DEBUG" -LDFLAGS "-shared -fPIC -lpthread" -o libcontract_cva6_test_attacker.so &> "$LR_VERIF_OUT_DIR"/compile-shared.log
-make -j -C obj_dir_shared/ -f Vtop.mk libcontract_cva6_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared/ -f Vtop.mk libcontract_cva6_test_attacker.so
 cp obj_dir_shared/libcontract_cva6_test_attacker.so libcontract_cva6_test_attacker.so
 test -f libcontract_cva6_test_attacker.so

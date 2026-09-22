@@ -5,15 +5,15 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ScriptUtilsTest {
-    private String command(String mode) throws Exception {
+    private java.util.List<String> command(String mode) throws Exception {
         String classes = Path.of(Child.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        return Path.of(System.getProperty("java.home"), "bin", "java")
-                + " -cp " + classes + " " + Child.class.getName() + " " + mode;
+        return java.util.List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", classes, Child.class.getName(), mode);
     }
 
     @Test
     void drainsMoreThanAPipeBufferBeforeWaitingForExit() throws Exception {
-        String output = ScriptUtils.runScript(command("verbose"), true, 5);
+        String output = ScriptUtils.runScript(command("verbose"), Path.of("."), true, 5);
         assertNotNull(output);
         assertTrue(output.contains("OUTPUT_COMPLETE"));
         assertFalse(output.contains("Process exited with code"));
@@ -21,7 +21,7 @@ class ScriptUtilsTest {
 
     @Test
     void preservesOutputAndFailureMarkerOnTimeout() throws Exception {
-        String output = ScriptUtils.runScript(command("timeout"), true, 1);
+        String output = ScriptUtils.runScript(command("timeout"), Path.of("."), true, 1);
         assertNotNull(output);
         assertTrue(output.contains("STARTED"));
         assertTrue(output.contains("timed out"));
@@ -30,7 +30,7 @@ class ScriptUtilsTest {
 
     @Test
     void preservesNonzeroExitAndMergedStderr() throws Exception {
-        String output = ScriptUtils.runScript(command("failure"), true, 5);
+        String output = ScriptUtils.runScript(command("failure"), Path.of("."), true, 5);
         assertTrue(output.contains("COMPILER_DIAGNOSTIC"));
         assertTrue(output.contains("Process exited with code 7"));
     }

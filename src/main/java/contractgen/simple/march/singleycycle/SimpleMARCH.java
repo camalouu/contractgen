@@ -32,11 +32,11 @@ public class SimpleMARCH extends MARCH {
     /**
      * The path where to find the sources
      */
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/simple/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("simple/").toString() + "/";
     /**
      * The path where to modify the sources before compilation
      */
-    protected String BASE_PATH = "/home/yosys/output/simple/generated/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("simple/generated/").toString() + "/";
     /**
      * Allow to define further arguments for the compilation scripts, e.g. pipeline
      */
@@ -82,7 +82,7 @@ public class SimpleMARCH extends MARCH {
     @Override
     public String runCover(int steps) {
         generateCoverSBY(steps, BASE_PATH + "syn/cover/");
-        return runScript(BASE_PATH + "syn/verif.sh", false, 3600);
+        return runScript(java.util.List.of("bash", BASE_PATH + "syn/verif.sh"), java.nio.file.Path.of(BASE_PATH), false, 3600);
     }
 
     /**
@@ -119,7 +119,7 @@ public class SimpleMARCH extends MARCH {
     @Override
     public boolean run(int steps) {
         generateSBY(steps, BASE_PATH + "syn/run/");
-        runScript(BASE_PATH + "syn/verif.sh", false, 3600);
+        runScript(java.util.List.of("bash", BASE_PATH + "syn/verif.sh"), java.nio.file.Path.of(BASE_PATH), false, 3600);
         if (!Files.exists(Path.of(BASE_PATH + "syn/run/verif/FAIL"))) {
             System.out.println("No violation.");
             return true;

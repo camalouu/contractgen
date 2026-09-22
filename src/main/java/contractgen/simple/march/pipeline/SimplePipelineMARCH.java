@@ -94,7 +94,7 @@ public class SimplePipelineMARCH extends SimpleMARCH {
             generateSources(testCase, i);
             String path = "verif_out/count_" + i;
             generateSBY(50, path);
-            runScript(BASE_PATH + "/syn/verif.sh", true, 3600);
+            runScript(java.util.List.of("bash", BASE_PATH + "/syn/verif.sh"), java.nio.file.Path.of(BASE_PATH), true, 3600);
             if (Files.exists(Path.of(BASE_PATH + "/syn/" + path + "/verif/FAIL"))) {
                 System.out.println("First violation with " + i + " instructions.");
                 responsible = i;

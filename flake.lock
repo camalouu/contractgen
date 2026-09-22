@@ -1,0 +1,329 @@
+{
+  "nodes": {
+    "cv32e40p-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1720856620,
+        "narHash": "sha256-ujllFnAsgwr5Sn7ZNn6sl3faYJhHDEEM0z++w6rbvgs=",
+        "owner": "openhwgroup",
+        "repo": "cv32e40p",
+        "rev": "360d272898d81806be3377193870dbf83a3ea79f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "openhwgroup",
+        "repo": "cv32e40p",
+        "rev": "360d272898d81806be3377193870dbf83a3ea79f",
+        "type": "github"
+      }
+    },
+    "cv32e40s-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1697532057,
+        "narHash": "sha256-MrRot0k8W1wjJRd7J5wXOpjXLeCQ6RvjiWgjCBB4Y2w=",
+        "owner": "openhwgroup",
+        "repo": "cv32e40s",
+        "rev": "d45d7b4c02a353d093de3efdf0569486d9a506c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "openhwgroup",
+        "repo": "cv32e40s",
+        "rev": "d45d7b4c02a353d093de3efdf0569486d9a506c5",
+        "type": "github"
+      }
+    },
+    "cva6-legacy-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1691048063,
+        "narHash": "sha256-YfzPfGxjGAbPtA92JXNfvfsdNLJOXqMo2FAypMYfD6M=",
+        "ref": "refs/heads/master",
+        "rev": "853fb4bee5ca6e36e39dc3c272a97f49d95c3c1d",
+        "revCount": 2267,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/openhwgroup/cva6"
+      },
+      "original": {
+        "rev": "853fb4bee5ca6e36e39dc3c272a97f49d95c3c1d",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/openhwgroup/cva6"
+      }
+    },
+    "cva6-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1738586402,
+        "narHash": "sha256-tkI1vcLsH4N/rTkWggwMPhhGfsd37at4hEKl3a77dCg=",
+        "ref": "refs/heads/master",
+        "rev": "2ef1c1b1fca419354920c5487293bc605294904e",
+        "revCount": 7318,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/openhwgroup/cva6"
+      },
+      "original": {
+        "rev": "2ef1c1b1fca419354920c5487293bc605294904e",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/openhwgroup/cva6"
+      }
+    },
+    "fwrisc-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1642440200,
+        "narHash": "sha256-V9lCl0ooAB6m4/ZVGR/kSH94mKMnmyUeZVT7d+pBMGs=",
+        "owner": "featherweight-ip",
+        "repo": "fwrisc",
+        "rev": "0e21466336c9d611c2b465dcb0de04572b6ebbcf",
+        "type": "github"
+      },
+      "original": {
+        "owner": "featherweight-ip",
+        "repo": "fwrisc",
+        "rev": "0e21466336c9d611c2b465dcb0de04572b6ebbcf",
+        "type": "github"
+      }
+    },
+    "hazard3-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773340101,
+        "narHash": "sha256-ZV7nW13R1QkPGOE8Sl5/cKsffIOSiq9TDbMC23NgXNk=",
+        "ref": "refs/heads/stable",
+        "rev": "8af992930f71a69b0e06c38734c1094f41a05ca0",
+        "revCount": 815,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/Wren6991/Hazard3"
+      },
+      "original": {
+        "rev": "8af992930f71a69b0e06c38734c1094f41a05ca0",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/Wren6991/Hazard3"
+      }
+    },
+    "ibex-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1611317838,
+        "narHash": "sha256-K2rSAqehuw5TTH8/pKBb23NiBTodnTZp801V3idCCd0=",
+        "owner": "lowRISC",
+        "repo": "ibex",
+        "rev": "95b85ddd1c995ace9f89ee42530f9e24820c1051",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lowRISC",
+        "repo": "ibex",
+        "rev": "95b85ddd1c995ace9f89ee42530f9e24820c1051",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1782847189,
+        "narHash": "sha256-twXPFqFsrrY5r28Zh7Homgcp2gUMBgQ6WDS98Q/3xFI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b6018f87da91d19d0ab4cf979885689b469cdd41",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-25.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "proteus-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1756193700,
+        "narHash": "sha256-nTTMnrRimpgz4+tON2P/USqEE3GPaFVPfz96VV3HAoc=",
+        "owner": "proteus-core",
+        "repo": "proteus",
+        "rev": "0f489fc5cfddabca93ae01880374385fcb649660",
+        "type": "github"
+      },
+      "original": {
+        "owner": "proteus-core",
+        "repo": "proteus",
+        "rev": "0f489fc5cfddabca93ae01880374385fcb649660",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "cv32e40p-src": "cv32e40p-src",
+        "cv32e40s-src": "cv32e40s-src",
+        "cva6-legacy-src": "cva6-legacy-src",
+        "cva6-src": "cva6-src",
+        "fwrisc-src": "fwrisc-src",
+        "hazard3-src": "hazard3-src",
+        "ibex-src": "ibex-src",
+        "nixpkgs": "nixpkgs",
+        "proteus-src": "proteus-src",
+        "spike-src": "spike-src",
+        "synlig-abc-src": "synlig-abc-src",
+        "synlig-plugins-src": "synlig-plugins-src",
+        "synlig-src": "synlig-src",
+        "synlig-surelog-src": "synlig-surelog-src",
+        "synlig-yosys-src": "synlig-yosys-src",
+        "verilator-src": "verilator-src",
+        "yosys-src": "yosys-src"
+      }
+    },
+    "spike-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789919392,
+        "narHash": "sha256-ojhK3ZSYJ0ANWdWakFFaK67WpA4Zus7a4dKpGRHpLPA=",
+        "owner": "camalouu",
+        "repo": "riscv-isa-sim",
+        "rev": "28893f6bfd8ce1659919a8dabdae8ce3db4a11a6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "camalouu",
+        "repo": "riscv-isa-sim",
+        "rev": "28893f6bfd8ce1659919a8dabdae8ce3db4a11a6",
+        "type": "github"
+      }
+    },
+    "synlig-abc-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1686052770,
+        "narHash": "sha256-si3YhibdfZR6RH0MLC8hRhr7nZ7Hq0N3UQXrBtyivN8=",
+        "owner": "YosysHQ",
+        "repo": "abc",
+        "rev": "1de4eafb0da0639199bd97f2fa98471e76327a6b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "YosysHQ",
+        "ref": "1de4eaf",
+        "repo": "abc",
+        "type": "github"
+      }
+    },
+    "synlig-plugins-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1687380464,
+        "narHash": "sha256-icjYrWZ7spVYAaixEijdd7UqucrQSK1knVHFJxZQHGY=",
+        "ref": "refs/heads/main",
+        "rev": "73038124b0a2943fe9d591c43f46292bcbf82105",
+        "revCount": 1437,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/chipsalliance/yosys-f4pga-plugins"
+      },
+      "original": {
+        "rev": "73038124b0a2943fe9d591c43f46292bcbf82105",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/chipsalliance/yosys-f4pga-plugins"
+      }
+    },
+    "synlig-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1688138030,
+        "narHash": "sha256-eEliWcXk4DtfKerUt+7my52TjSYXT2RN+ofnzUIjkxA=",
+        "owner": "chipsalliance",
+        "repo": "synlig",
+        "rev": "eceb24bc290f62af314dfeca06cea690eb95ac07",
+        "type": "github"
+      },
+      "original": {
+        "owner": "chipsalliance",
+        "ref": "2023-06-30-eceb24b",
+        "repo": "synlig",
+        "type": "github"
+      }
+    },
+    "synlig-surelog-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1684294949,
+        "narHash": "sha256-VE3mAqwbro5PUSqxAryaHN9uac7NzCb8INJvS+6KaUE=",
+        "ref": "refs/heads/master",
+        "rev": "bf13c8316ededdad863c35826d804493001d1b37",
+        "revCount": 5965,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/chipsalliance/Surelog"
+      },
+      "original": {
+        "rev": "bf13c8316ededdad863c35826d804493001d1b37",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/chipsalliance/Surelog"
+      }
+    },
+    "synlig-yosys-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1686615439,
+        "narHash": "sha256-xHBXLDa9siZ+NB22EIj/coGGFO7+0v3lmPorolS63xY=",
+        "ref": "refs/heads/main",
+        "rev": "8b2a0010216f9a15c09bd2f4dc63691949b126df",
+        "revCount": 12336,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/YosysHQ/yosys"
+      },
+      "original": {
+        "rev": "8b2a0010216f9a15c09bd2f4dc63691949b126df",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/YosysHQ/yosys"
+      }
+    },
+    "verilator-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1677946784,
+        "narHash": "sha256-+eJBGvQOk5w+PyUF3aieuXZVeKNS4cKQqHnJibKwFnM=",
+        "owner": "verilator",
+        "repo": "verilator",
+        "rev": "21093fd1bd36fed8943f67868ddc8f75f41e4488",
+        "type": "github"
+      },
+      "original": {
+        "owner": "verilator",
+        "ref": "v5.008",
+        "repo": "verilator",
+        "type": "github"
+      }
+    },
+    "yosys-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762844242,
+        "narHash": "sha256-JWkSNV9nXKOIEniMO9y1LsITgyIG+cYrb+nfXvyyHJM=",
+        "ref": "refs/tags/v0.59",
+        "rev": "7fbb71f11c1e5421938aa6ec38b5ef60898a8d57",
+        "revCount": 16164,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/YosysHQ/yosys"
+      },
+      "original": {
+        "ref": "refs/tags/v0.59",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/YosysHQ/yosys"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

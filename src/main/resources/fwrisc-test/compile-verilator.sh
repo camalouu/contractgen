@@ -6,8 +6,8 @@ mkdir -p "$2"
 OUT_DIR="$(realpath "$2")"
 CORE_SOURCE_ROOT="${CONTRACT_FWRISC_CORE_ROOT:-$SOURCE_DIR/core}"
 CORE_PATCH="$SOURCE_DIR/patches/rv32m-correctness.patch"
-COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-/home/yosys/resources/attacker-test-common}"
-PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-/home/yosys/project/src/main/resources/attacker-test-common}"
+COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
+PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
 if [[ -d "$COMMON_DIR/verif" ]]; then COMMON_ROOT="$COMMON_DIR"; else COMMON_ROOT="$PROJECT_COMMON_DIR"; fi
 if [[ ! -f "$CORE_SOURCE_ROOT/rtl/fwrisc.sv" || ! -f "$CORE_PATCH" || ! -d "$COMMON_ROOT/verif" ]]; then
   echo "Cannot find FWRISC RTL or shared attacker-harness resources." >&2
@@ -43,6 +43,6 @@ verilator --cc --top-module fwrisc_test_top -I"$CORE_ROOT/rtl" \
   --exe "$SOURCE_DIR/verif/fwrisc_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
   -CFLAGS "-std=c++17 -O3 -fPIC -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_fwrisc_test_attacker.so "${RTL_SOURCES[@]}" "${VERIF_SOURCES[@]}"
-make -j -C "$OUT_DIR/obj_dir_shared" -f Vfwrisc_test_top.mk libcontract_fwrisc_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vfwrisc_test_top.mk libcontract_fwrisc_test_attacker.so
 cp "$OUT_DIR/obj_dir_shared/libcontract_fwrisc_test_attacker.so" "$OUT_DIR/libcontract_fwrisc_test_attacker.so"
 test -f "$OUT_DIR/libcontract_fwrisc_test_attacker.so"

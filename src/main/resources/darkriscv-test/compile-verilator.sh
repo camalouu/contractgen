@@ -3,10 +3,10 @@ set -euo pipefail
 
 SOURCE_DIR="$1"
 OUT_DIR="$2"
-LEGACY_DIR="${CONTRACT_DARKRISCV_RESOURCE_ROOT:-/home/yosys/resources/darkriscv-2}"
-PROJECT_LEGACY_DIR="${CONTRACT_DARKRISCV_PROJECT_RESOURCE_ROOT:-/home/yosys/project/src/main/resources/darkriscv-2}"
-COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-/home/yosys/resources/attacker-test-common}"
-PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-/home/yosys/project/src/main/resources/attacker-test-common}"
+LEGACY_DIR="${CONTRACT_DARKRISCV_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/darkriscv-2}"
+PROJECT_LEGACY_DIR="${CONTRACT_DARKRISCV_PROJECT_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/darkriscv-2}"
+COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
+PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
 
 if [[ -d "$LEGACY_DIR/core" ]]; then CORE_ROOT="$LEGACY_DIR"; else CORE_ROOT="$PROJECT_LEGACY_DIR"; fi
 if [[ -d "$COMMON_DIR/verif" ]]; then COMMON_ROOT="$COMMON_DIR"; else COMMON_ROOT="$PROJECT_COMMON_DIR"; fi
@@ -45,6 +45,6 @@ verilator --cc --top-module darkriscv_test_top --timing \
   --exe "$SOURCE_DIR/verif/darkriscv_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
   -CFLAGS "-std=c++17 -O3 -fPIC -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_darkriscv_2_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
-make -j -C "$OUT_DIR/obj_dir_shared" -f Vdarkriscv_test_top.mk libcontract_darkriscv_2_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vdarkriscv_test_top.mk libcontract_darkriscv_2_test_attacker.so
 cp "$OUT_DIR/obj_dir_shared/libcontract_darkriscv_2_test_attacker.so" "$OUT_DIR/libcontract_darkriscv_2_test_attacker.so"
 test -f "$OUT_DIR/libcontract_darkriscv_2_test_attacker.so"

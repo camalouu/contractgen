@@ -17,7 +17,7 @@ Use this file as the default operating guide when making changes in this repo.
 - Preserve the research pipeline: test generation -> simulation -> extraction -> contract update/statistics.
 - Treat supported cores as first-class integration targets: Ibex, CVA6, Hazard3, Sodor 2/5, DarkRISCV 2/3.
 - Prefer small, targeted changes. Full end-to-end runs are expensive and can generate very large artifacts.
-- Treat Docker rebuild triggers as expensive changes. Do not casually change or delete the Dockerfile, base-image tags/digests, Compose build settings, or other files that invalidate the Docker build cache. Before making such a change, warn the user that a full Docker rebuild may be required, explain the expected cost/time, and ask for confirmation when the change is not essential. If a rebuild is required, remind the user of the exact command (for example, `docker compose build yosys` or `docker compose up --build`) and do not claim the image was rebuilt unless it was actually run.
+- Treat pinned simulator and RTL derivations as expensive changes. Keep their sources narrow, and do not change revisions or build flags casually because this invalidates the Nix cache.
 - Do not assume generated JSON/CSV/TXT artifacts belong in version control. `.gitignore` excludes most of them.
 
 ## Key Entry Points
@@ -49,8 +49,8 @@ Use this file as the default operating guide when making changes in this repo.
   Per-core Java integrations.
 - `src/main/resources/<core>`
   Per-core RTL, verification harnesses, compile scripts, and simulator-specific support files.
-- `src/main/resources/docker-compose.yml`
-  Containerized environment for heavier runs.
+- `flake.nix`, `flake.lock`, and `nix/`
+  Reproducible application, simulator, RTL-regeneration, development-shell, and validation definitions.
 - Top-level docs such as `README.md`, `GEMINI.md`, and `paper.txt`
   Project intent, methodology, and terminology.
 
@@ -69,30 +69,28 @@ Use this file as the default operating guide when making changes in this repo.
 Start with the cheapest checks first.
 
 - Build:
-  `mvn clean package`
-- Run tests, if present:
-  `mvn test`
+  `nix build`
+- Run the complete validation matrix:
+  `nix flake check`
 - Show CLI help:
-  `mvn -q exec:java -Dexec.mainClass=contractgen.Main -Dexec.args='--help'`
+  `nix run . -- --help`
+- For focused Java development inside `nix develop`, use a separate output
+  directory when the existing `target/` is owned by an older environment:
+  `mvn -Dcontractgen.build.directory=/tmp/contractgen-build test`
 
 Use heavier commands only when needed and only after checking tool availability:
 
 - One-shot synthesis via CLI:
-  `mvn -q exec:java -Dexec.mainClass=contractgen.Main -Dexec.args='synthesize ...'`
-- Legacy configured run:
+  `nix run . -- synthesize ...`
+- Legacy configured run from `nix develop`:
   `mvn -q exec:java -Dexec.mainClass=contractgen.ContractGen`
 
 ## Environment Assumptions
 
-The Java/Maven side is straightforward; the simulation side is not. Full runs may require:
-
-- Java 18 as configured in `pom.xml`
-- Maven
-- `iverilog`
-- `verilator`
-- `yosys`
-- `sv2v`
-- Docker for the containerized path
+The supported environment is x86-64 Linux with Nix and flakes enabled. The
+flake supplies JDK 21, Maven, Icarus, pinned Verilator and Yosys versions,
+sv2v, formal tools, native libraries, Spike, and fetched RTL. Maven continues
+to emit Java 18 compatible bytecode.
 
 Do not claim end-to-end validation unless the required simulator/toolchain pieces were actually available and used.
 

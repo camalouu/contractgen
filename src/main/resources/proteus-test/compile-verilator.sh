@@ -3,7 +3,7 @@ set -euo pipefail
 
 SOURCE_DIR=$(cd "$1" && pwd)
 OUTPUT_DIR=$2
-PROJECT_RESOURCE_DIR=${CONTRACT_PROTEUS_TEST_RESOURCE_ROOT:-/home/yosys/project/src/main/resources/proteus-test}
+PROJECT_RESOURCE_DIR=${CONTRACT_PROTEUS_TEST_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/proteus-test}
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -39,6 +39,6 @@ verilator --cc $FLAGS --Mdir obj_dir_shared --exe \
   proteus_test_runtime.cpp proteus_test_shared.cpp \
   -CFLAGS "-std=c++17 -fPIC" -LDFLAGS "-shared -fPIC" \
   -o libcontract_proteus_test_attacker.so $SOURCES
-make -j -C obj_dir_shared -f Vtop.mk libcontract_proteus_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared -f Vtop.mk libcontract_proteus_test_attacker.so
 cp obj_dir_shared/libcontract_proteus_test_attacker.so .
 test -f libcontract_proteus_test_attacker.so

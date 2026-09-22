@@ -1,10 +1,8 @@
 package contractgen.util;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,13 +19,20 @@ public class ScriptUtils {
      * @return The console output.
      */
     public static String runScript(String path, boolean silent, int maxSeconds) {
+        java.nio.file.Path executable = java.nio.file.Path.of(path).toAbsolutePath();
+        return runScript(List.of(executable.toString()), executable.getParent(), silent, maxSeconds);
+    }
+
+    /** Execute arguments without shell splitting, in an explicit working directory. */
+    public static String runScript(List<String> command, java.nio.file.Path directory,
+                                   boolean silent, int maxSeconds) {
         Process p = null;
         StringBuffer output = new StringBuffer();
         try {
-            // adding command and args to the list
-            List<String> cmdList = new ArrayList<>(List.of(path.split(" +")));
-            ProcessBuilder pb = new ProcessBuilder(cmdList);
-            pb.directory(new File(path.split(" +")[0]).getParentFile());
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(directory.toFile());
+            pb.environment().putIfAbsent("CONTRACTGEN_RESOURCE_ROOT", RuntimePaths.resource("").toString());
+            pb.environment().putIfAbsent("CONTRACTGEN_WORK_ROOT", RuntimePaths.work("").toString());
             pb.redirectErrorStream(true);
             // A newly written executable can briefly be busy. Bound retries so
             // a missing executable or permission failure cannot loop forever.

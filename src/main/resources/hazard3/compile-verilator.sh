@@ -2,7 +2,7 @@ set -ax
 
 cd "$1" || exit
 export LR_VERIF_OUT_DIR=$2
-rm -r "$LR_VERIF_OUT_DIR"
+rm -rf "$LR_VERIF_OUT_DIR"
 mkdir -p "$LR_VERIF_OUT_DIR"
 
 # Convert verif SystemVerilog files to Verilog
@@ -43,5 +43,5 @@ cd "$LR_VERIF_OUT_DIR"/ || exit
 rm -f hazard3_ecp5_jtag_dtm.v hazard3_xilinx7_jtag_dtm.v
 
 verilator --cc -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN -Wno-CASEINCOMPLETE -DRISCV_FORMAL -DHAZARD3_RVFI_STANDALONE --top-module top --exe sim_main.cpp --trace +incdir+. *.v
-make -j -C obj_dir/ -f Vtop.mk Vtop
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir/ -f Vtop.mk Vtop
 cp obj_dir/Vtop hazard3

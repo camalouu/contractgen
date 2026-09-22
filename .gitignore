@@ -44,5 +44,16 @@ build/
 *.csv
 *.vcd
 *.txt
+*.dasm
 results-old/*
 output/*
+
+# Nix build and development outputs
+result
+result-*
+.direnv/
+musr/
+riscv-isa-sim/
+results-docker/
+target-docker/
+results/

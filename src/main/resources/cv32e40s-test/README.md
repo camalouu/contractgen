@@ -18,12 +18,12 @@ Upstream licensing is retained in `core/LICENSE` and source headers.
 From the repository root:
 
 ```sh
-git submodule update --init src/main/resources/cv32e40s-test/core
-bash src/main/resources/cv32e40s-test/compile-verilator.sh \
-  src/main/resources/cv32e40s-test /tmp/cv32e40s-compiled
+nix build .#attacker-cv32e40s
 ```
 
-Requires Verilator, a C++17 compiler, and Make. Tested with Verilator 5.034.
+The flake fetches the pinned core and supplies Verilator 5.008, a C++17
+compiler, and Make. The library is available as
+`result/lib/libcontract_cv32e40s_test_attacker.so`.
 `CONTRACT_BUILD_JOBS` defaults to 4.
 `CONTRACT_BUILD_TIMEOUT_SECONDS` sets the Java build deadline (default 240 seconds).
 Compiler output is drained during execution and retained when a build times out.
@@ -31,32 +31,27 @@ Optional source overrides are
 `CONTRACT_CV32E40S_CORE_ROOT` and `CONTRACT_ATTACKER_COMMON_ROOT`.
 The upstream packed performance-counter array needs the narrow BLKANDNBLK
 waiver in `verif/upstream.vlt`; the upstream RTL is otherwise unmodified.
-No Docker image rebuild is required. Existing container resource mounts expose
-the new sources. In the container, the default build output is
-`/home/yosys/output/cv32e40s-test/compiled/`.
 
 ## Run
 
-After compiling Java (`mvn test`, or `mvn package` for a packaged CLI), use the
-same testcase set in separate runs to compare timing modes:
+Use the packaged CLI and the same testcase set in separate runs to compare
+timing modes:
 
 ```sh
-java -cp 'target/classes:target/lib/*' contractgen.Main synth_new \
+nix run . -- synth_new \
   -p CV32E40S_TEST -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
   -n 64 -t 2 -s 1 --output-dir results/cv32e40s-test/off \
-  --cv32e40s-test-lib /tmp/cv32e40s-compiled/libcontract_cv32e40s_test_attacker.so \
   --cv32e40s-data-independent-timing=off --disable-adaptive-skipping
 
-java -cp 'target/classes:target/lib/*' contractgen.Main replay_synthesize_spike \
+nix run . -- replay_synthesize_spike \
   -p CV32E40S_TEST -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE -t 2 \
   -e results/cv32e40s-test/off/testcases.json \
   -o results/cv32e40s-test/on.json --txt results/cv32e40s-test/on-summary.txt \
-  --cv32e40s-test-lib /tmp/cv32e40s-compiled/libcontract_cv32e40s_test_attacker.so \
   --cv32e40s-data-independent-timing=on --disable-adaptive-skipping
 ```
 
 Library selection is explicit `--cv32e40s-test-lib`, then
-`CONTRACT_CV32E40S_TEST_LIB`, then the default container build. The existing
+`CONTRACT_CV32E40S_TEST_LIB`, then the packaged library. The existing
 `--spike-lib` / `CONTRACT_SPIKE_LIB` options select the adapted Spike library.
 Timing defaults to `off`. Both modes use one compiled library; the mode is passed
 per native batch and is never shared mutable process state. Summaries record

@@ -2,7 +2,7 @@ set -ax
 
 cd "$1" || exit
 export LR_VERIF_OUT_DIR=$2
-rm -r "$LR_VERIF_OUT_DIR"
+rm -rf "$LR_VERIF_OUT_DIR"
 mkdir -p "$LR_VERIF_OUT_DIR"
 
 case "$3" in
@@ -82,5 +82,5 @@ cd "$LR_VERIF_OUT_DIR"/ || exit
 # iverilog -o ibex *.v
 
 verilator --cc -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN --top-module top --exe sim_main.cpp --trace atk.v cached_data_mem.v clk_sync.v control.v ctr.v data_mem.v ibex_alu.v ibex_branch_predict.v ibex_compressed_decoder.v ibex_controller.v ibex_core.v ibex_counter.v ibex_cs_registers.v ibex_csr.v ibex_decoder.v ibex_dummy_instr.v ibex_ex_block.v ibex_fetch_fifo.v ibex_icache.v ibex_id_stage.v ibex_if_stage.v ibex_load_store_unit.v ibex_multdiv_fast.v ibex_multdiv_slow.v ibex_pmp.v ibex_prefetch_buffer.v ibex_register_file_ff.v ibex_wb_stage.v instr_mem.v riscv_decoder.v tc_clk_gating.v top.v
-make -j -C obj_dir/ -f Vtop.mk Vtop
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir/ -f Vtop.mk Vtop
 cp obj_dir/Vtop ibex

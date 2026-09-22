@@ -40,7 +40,6 @@ import contractgen.riscv.proteus.ProteusTestAttackerClient;
 import contractgen.riscv.sodor.SODOR_2;
 import contractgen.riscv.sodor.SODOR_5;
 import contractgen.updater.ILPUpdater;
-import contractgen.refinement.RefineZ3;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -64,7 +63,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Command(name = "main", subcommands = {Synthesize.class, SynthesizeNew.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, RefineZ3.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
+@Command(name = "main", mixinStandardHelpOptions = true, subcommands = {Synthesize.class, SynthesizeNew.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Main()).execute(args);
@@ -1209,43 +1208,43 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             case IBEX_TEST -> createHarnessSetup(
                     new IBEXTest(new ILPUpdater(), testCases, allowed, isa, false),
                     ibexTestLib, "CONTRACT_IBEX_TEST_LIB",
-                    "/home/yosys/output/ibex-test/compiled/libcontract_ibex_test_attacker.so",
+                    contractgen.util.RuntimePaths.work("ibex-test/compiled/libcontract_ibex_test_attacker.so").toString(),
                     IBEXTestAttackerClient::new, true, false);
             case CVA6_TEST -> createHarnessSetup(
                     new CVA6Test(new ILPUpdater(), testCases, allowed, isa, false),
                     cva6TestLib, "CONTRACT_CVA6_TEST_LIB",
-                    "/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so",
+                    contractgen.util.RuntimePaths.work("cva6-test/compiled/libcontract_cva6_test_attacker.so").toString(),
                     CVA6TestAttackerClient::new, false, true);
             case HAZARD3_TEST -> createHarnessSetup(
                     new Hazard3Test(new ILPUpdater(), testCases, allowed, isa, false),
                     hazard3TestLib, "CONTRACT_HAZARD3_TEST_LIB",
-                    "/home/yosys/output/hazard3-test/compiled/libcontract_hazard3_test_attacker.so",
+                    contractgen.util.RuntimePaths.work("hazard3-test/compiled/libcontract_hazard3_test_attacker.so").toString(),
                     Hazard3TestAttackerClient::new, false, false);
             case PROTEUS_TEST -> createHarnessSetup(
                     new ProteusTest(new ILPUpdater(), testCases, allowed, isa, false),
                     proteusTestLib, "CONTRACT_PROTEUS_TEST_LIB",
-                    "/home/yosys/output/proteus-test/compiled/libcontract_proteus_test_attacker.so",
+                    contractgen.util.RuntimePaths.work("proteus-test/compiled/libcontract_proteus_test_attacker.so").toString(),
                     ProteusTestAttackerClient::new, true, false);
             case SODOR_2_TEST -> simpleHarnessSetup(
                     testCases, allowed, "sodor-test", "SODOR_2_TEST",
                     sodor2TestLib, "CONTRACT_SODOR_2_TEST_LIB",
-                    "/home/yosys/output/sodor-test/compiled/libcontract_sodor_2_test_attacker.so");
+                    contractgen.util.RuntimePaths.work("sodor-test/compiled/libcontract_sodor_2_test_attacker.so").toString());
             case DARKRISCV_2_TEST -> simpleHarnessSetup(
                     testCases, allowed, "darkriscv-test", "DARKRISCV_2_TEST",
                     darkriscv2TestLib, "CONTRACT_DARKRISCV_2_TEST_LIB",
-                    "/home/yosys/output/darkriscv-test/compiled/libcontract_darkriscv_2_test_attacker.so");
+                    contractgen.util.RuntimePaths.work("darkriscv-test/compiled/libcontract_darkriscv_2_test_attacker.so").toString());
             case FWRISC_TEST -> simpleHarnessSetup(
                     testCases, allowed, "fwrisc-test", "FWRISC_TEST",
                     fwriscTestLib, "CONTRACT_FWRISC_TEST_LIB",
-                    "/home/yosys/output/fwrisc-test/compiled/libcontract_fwrisc_test_attacker.so");
+                    contractgen.util.RuntimePaths.work("fwrisc-test/compiled/libcontract_fwrisc_test_attacker.so").toString());
             case CV32E40P_TEST -> simpleHarnessSetup(
                     testCases, allowed, "cv32e40p-test", "CV32E40P_TEST",
                     cv32e40pTestLib, "CONTRACT_CV32E40P_TEST_LIB",
-                    "/home/yosys/output/cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so");
+                    contractgen.util.RuntimePaths.work("cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so").toString());
             case CV32E40S_TEST -> createHarnessSetup(
                     new SimpleTestMARCH(new ILPUpdater(), testCases, allowed, isa, "cv32e40s-test", "CV32E40S_TEST"),
                     cv32e40sTestLib, "CONTRACT_CV32E40S_TEST_LIB",
-                    "/home/yosys/output/cv32e40s-test/compiled/libcontract_cv32e40s_test_attacker.so",
+                    contractgen.util.RuntimePaths.work("cv32e40s-test/compiled/libcontract_cv32e40s_test_attacker.so").toString(),
                     path -> new CV32E40STestAttackerClient(path, cv32e40sTiming), false, true);
         };
     }
@@ -1878,7 +1877,7 @@ class CompareIbexTestAttacker implements Callable<Integer> {
                 library = Path.of(env);
                 explicitLibrary = true;
             } else {
-                library = Path.of("/home/yosys/output/ibex-test/compiled/libcontract_ibex_test_attacker.so");
+                library = Path.of(contractgen.util.RuntimePaths.work("ibex-test/compiled/libcontract_ibex_test_attacker.so").toString());
             }
         }
         if (!Files.exists(library) && !explicitLibrary) {
@@ -2118,7 +2117,7 @@ class CompareCva6TestAttacker implements Callable<Integer> {
                 library = Path.of(env);
                 explicitLibrary = true;
             } else {
-                library = Path.of("/home/yosys/output/cva6-test/compiled/libcontract_cva6_test_attacker.so");
+                library = Path.of(contractgen.util.RuntimePaths.work("cva6-test/compiled/libcontract_cva6_test_attacker.so").toString());
             }
         }
         if (!explicitLibrary) {

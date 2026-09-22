@@ -28,19 +28,19 @@ DARKRISCV_3 extends MARCH {
     /**
      * The path where to find the template.
      */
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/darkriscv-3/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("darkriscv-3/").toString() + "/";
     /**
      * The path where to store the instantiated template.
      */
-    protected String BASE_PATH = "/home/yosys/output/darkriscv-3/generated/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("darkriscv-3/generated/").toString() + "/";
     /**
      * The path where the compiled module is to be stored.
      */
-    protected String COMPILATION_PATH = "/home/yosys/output/darkriscv-3/compiled/";
+    protected String COMPILATION_PATH = contractgen.util.RuntimePaths.work("darkriscv-3/compiled/").toString() + "/";
     /**
      * The path where simulation takes place.
      */
-    protected String SIMULATION_PATH = "/home/yosys/output/darkriscv-3/simulation/";
+    protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("darkriscv-3/simulation/").toString() + "/";
 
     /**
      * @param updater   The updater to be used to update the contract.
@@ -135,7 +135,7 @@ DARKRISCV_3 extends MARCH {
         synchronized (getISA().getContract()) {
             replaceString(BASE_PATH + "verif/ctr.sv", "/* CONTRACT */", getISA().getContract().printContract());
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile.sh " + BASE_PATH + " " + COMPILATION_PATH, false, 240);
+        String output = runScript(java.util.List.of("bash", BASE_PATH + "compile.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), false, 240);
         System.out.println(output);
         System.out.println("Compilation finished.");
     }

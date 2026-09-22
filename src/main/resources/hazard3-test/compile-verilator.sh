@@ -3,8 +3,8 @@ set -euo pipefail
 
 SOURCE_DIR="$1"
 OUT_DIR="$2"
-LEGACY_DIR="${CONTRACT_HAZARD3_RESOURCE_ROOT:-/home/yosys/resources/hazard3}"
-PROJECT_LEGACY_DIR="${CONTRACT_HAZARD3_PROJECT_RESOURCE_ROOT:-/home/yosys/project/src/main/resources/hazard3}"
+LEGACY_DIR="${CONTRACT_HAZARD3_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/hazard3}"
+PROJECT_LEGACY_DIR="${CONTRACT_HAZARD3_PROJECT_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/hazard3}"
 
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
@@ -72,6 +72,6 @@ verilator "${VERILATOR_FLAGS[@]}" --Mdir "$OUT_DIR"/obj_dir_shared \
   --exe "$SOURCE_DIR"/verif/hazard3_test_runtime.cpp "$SOURCE_DIR"/verif/hazard3_test_shared.cpp \
   -CFLAGS "-std=c++17 -O3 -fPIC" -LDFLAGS "-shared -fPIC" \
   -o libcontract_hazard3_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
-make -j -C "$OUT_DIR"/obj_dir_shared -f Vhazard3_test_top.mk libcontract_hazard3_test_attacker.so
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR"/obj_dir_shared -f Vhazard3_test_top.mk libcontract_hazard3_test_attacker.so
 cp "$OUT_DIR"/obj_dir_shared/libcontract_hazard3_test_attacker.so "$OUT_DIR"/libcontract_hazard3_test_attacker.so
 test -f "$OUT_DIR"/libcontract_hazard3_test_attacker.so

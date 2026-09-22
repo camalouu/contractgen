@@ -27,11 +27,11 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
  */
 public class CVA6Test extends MARCH {
 
-    private static final String TEMPLATE_PATH = "/home/yosys/resources/cva6-test/";
+    private static final String TEMPLATE_PATH = contractgen.util.RuntimePaths.resource("cva6-test/").toString() + "/";
 
-    protected String BASE_PATH = "/home/yosys/output/cva6-test/generated/";
-    protected String COMPILATION_PATH = "/home/yosys/output/cva6-test/compiled/";
-    protected String SIMULATION_PATH = "/home/yosys/output/cva6-test/simulation/";
+    protected String BASE_PATH = contractgen.util.RuntimePaths.work("cva6-test/generated/").toString() + "/";
+    protected String COMPILATION_PATH = contractgen.util.RuntimePaths.work("cva6-test/compiled/").toString() + "/";
+    protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("cva6-test/simulation/").toString() + "/";
 
     public CVA6Test(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowedObservations, Set<RISCV_SUBSET> isa, boolean isSP) {
         super(new RISCV(allowedObservations, isa, updater, testCases), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
@@ -97,7 +97,7 @@ public class CVA6Test extends MARCH {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        String output = runScript("/bin/bash " + BASE_PATH + "compile-verilator.sh " + BASE_PATH + " " + COMPILATION_PATH, true, 240);
+        String output = runScript(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH), true, 240);
         if (output == null || output.contains("Process exited with code")) {
             throw new IllegalStateException("CVA6_TEST compilation failed:\n" + tail(output, 120));
         }
