@@ -62,3 +62,27 @@ extern "C" int contract_ibex_test_attacker_batch_v4(
     }
     return 0;
 }
+
+// Benchmark entry point: use the same model and file parser as the compatibility
+// executable, while allowing a long-lived caller to retain the library.
+extern "C" int contract_ibex_test_attacker_file_v1(
+    const char* directory, int max_cycles, int* status,
+    int* failure_cutoff, int* execution_cutoff
+) {
+    if (directory == nullptr || status == nullptr || failure_cutoff == nullptr ||
+        execution_cutoff == nullptr) return -1;
+    try {
+        IbexTestCaseImage test_case;
+        contract_ibex_load_legacy_dat_files(test_case, directory);
+        const IbexTestRunResult result = contract_ibex_run_case(test_case, max_cycles);
+        *status = status_code(result.status);
+        *failure_cutoff = result.failure_cutoff;
+        *execution_cutoff = result.execution_cutoff;
+        return 0;
+    } catch (const std::exception&) {
+        *status = status_code(IbexTestStatus::Error);
+        *failure_cutoff = -1;
+        *execution_cutoff = -1;
+        return -1;
+    }
+}

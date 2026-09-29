@@ -15,6 +15,19 @@ let
     unzip -j ${java}/share/java/lib/jna-5.14.0.jar 'com/sun/jna/linux-x86-64/libjnidispatch.so' -d $out/lib
     autoPatchelf $out
   '';
+  practicalBenchmarkDriver = pkgs.stdenv.mkDerivation {
+    pname = "contractgen-practical-benchmark-driver";
+    version = "1";
+    src = ./practical-benchmark-driver.cpp;
+    dontUnpack = true;
+    buildPhase = ''
+      $CXX -O2 -std=c++17 "$src" -ldl -o practical-benchmark-driver
+    '';
+    installPhase = ''
+      install -Dm755 practical-benchmark-driver $out/bin/practical-benchmark-driver
+    '';
+  };
+  legacyBenchmark = import ./legacy-benchmark.nix { inherit pkgs resources tools; };
   application = pkgs.runCommand "contractgen" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
     mkdir -p $out/bin
     makeWrapper ${pkgs.jdk21_headless}/bin/java $out/bin/contractgen \
@@ -28,7 +41,9 @@ let
       --add-flags '-cp ${java}/share/java/contractgen.jar:${java}/share/java/lib/* contractgen.Main'
   '';
 in {
-  packages = { default = application; inherit java native; resources = resources.all;
+  packages = { default = application; inherit java native; practical-benchmark-driver = practicalBenchmarkDriver; resources = resources.all;
+    legacy-benchmark-ibex = legacyBenchmark "ibex";
+    legacy-benchmark-cva6 = legacyBenchmark "cva6";
     inherit (tools) spike verilator yosys;
     inherit synlig;
     cva6-verilog = import ./cva6-verilog.nix { inherit pkgs resources synlig; };

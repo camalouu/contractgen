@@ -5,7 +5,8 @@ set -euo pipefail
 # platform="CV32E40S_TEST"
 # platform="CV32E40P_TEST"
 # platform="PROTEUS_TEST"
-platform="CVA6_TEST"
+# platform="CVA6_TEST"
+platform="IBEX_TEST"
 count=10000
 threads=8
 seed=35

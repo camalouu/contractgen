@@ -166,8 +166,18 @@ public class ILPUpdater implements Updater {
         }
 
         
-        HashMap<TestResult, MPVariable> indistinguishable_covered = new HashMap<>(indistinguishable.size());
+        // The existing objective uses a HashMap keyed by TestResult. For RISC-V,
+        // equality is based on observations, and put() keeps the last variable
+        // for each equal key. Earlier negative variables have no objective term;
+        // their equivalence constraints can always be satisfied once the selected
+        // observations are fixed. Keep exactly the same last representatives, but
+        // avoid constructing the redundant rows (which dominate large runs).
+        Map<TestResult, TestResult> negativeRepresentatives = new HashMap<>();
         for (TestResult pe : indistinguishable) {
+            negativeRepresentatives.put(pe, pe);
+        }
+        HashMap<TestResult, MPVariable> indistinguishable_covered = new HashMap<>(negativeRepresentatives.size());
+        for (TestResult pe : negativeRepresentatives.values()) {
             MPVariable var = solver.makeBoolVar("C_" + pe.getIndex());
             indistinguishable_covered.put(pe, var);
             hint.put(var, oldContract.stream().anyMatch(o -> pe.getDistinguishingObservations().contains(o)) ? 1.0 : 0.0);

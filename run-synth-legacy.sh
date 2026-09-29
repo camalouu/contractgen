@@ -2,11 +2,11 @@
 set -euo pipefail
 
 platform="CVA6"       # Options: IBEX, CVA6
-count=25
+count=24
 threads=8
 seed=35
-isa="BASE"
-contract="BASE"
+isa="BASE,M"
+contract="BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE"
 use_verilator=false   # Set to false for Icarus Verilog (iverilog), true for Verilator
 
 platform_lower=$(echo "$platform" | tr '[:upper:]' '[:lower:]')

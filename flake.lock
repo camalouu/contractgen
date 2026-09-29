@@ -125,6 +125,23 @@
         "type": "github"
       }
     },
+    "iverilog-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789718890,
+        "narHash": "sha256-Lvzs/1j1eG+tzE31pc6MnChQakxC7SvVGKuW4Kpnceo=",
+        "owner": "steveicarus",
+        "repo": "iverilog",
+        "rev": "5591c2dde27946c3317671fa2705bd8fee52e54a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "steveicarus",
+        "repo": "iverilog",
+        "rev": "5591c2dde27946c3317671fa2705bd8fee52e54a",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1782847189,
@@ -167,6 +184,7 @@
         "fwrisc-src": "fwrisc-src",
         "hazard3-src": "hazard3-src",
         "ibex-src": "ibex-src",
+        "iverilog-src": "iverilog-src",
         "nixpkgs": "nixpkgs",
         "proteus-src": "proteus-src",
         "spike-src": "spike-src",

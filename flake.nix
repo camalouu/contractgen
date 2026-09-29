@@ -5,6 +5,7 @@
     verilator-src = { url = "github:verilator/verilator/v5.008"; flake = false; };
     yosys-src = { url = "git+https://github.com/YosysHQ/yosys?ref=refs/tags/v0.59&submodules=1"; flake = false; };
     spike-src = { url = "github:camalouu/riscv-isa-sim/28893f6bfd8ce1659919a8dabdae8ce3db4a11a6"; flake = false; };
+    iverilog-src = { url = "github:steveicarus/iverilog/5591c2dde27946c3317671fa2705bd8fee52e54a"; flake = false; };
     ibex-src = { url = "github:lowRISC/ibex/95b85ddd1c995ace9f89ee42530f9e24820c1051"; flake = false; };
     hazard3-src = { url = "git+https://github.com/Wren6991/Hazard3?rev=8af992930f71a69b0e06c38734c1094f41a05ca0&submodules=1"; flake = false; };
     cva6-src = { url = "git+https://github.com/openhwgroup/cva6?rev=2ef1c1b1fca419354920c5487293bc605294904e&submodules=1"; flake = false; };

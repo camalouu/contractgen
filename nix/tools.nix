@@ -46,10 +46,17 @@ let
     enableParallelBuilding = true;
     postInstall = ''install -Dm755 libcontract_spike_atom.so $out/lib/libcontract_spike_atom.so'';
   };
+  iverilog = pkgs.iverilog.overrideAttrs (old: {
+    version = "14.0-devel-5591c2d";
+    src = inputs.iverilog-src;
+    patches = [];
+    doCheck = false;
+    doInstallCheck = false;
+  });
 in {
-  inherit verilator yosys spike;
+  inherit verilator yosys spike iverilog;
   simulation = with pkgs; [ bash coreutils findutils gnugrep gnused gawk diffutils patch
     perl python3 gcc gnumake haskellPackages.sv2v verilator ];
-  runtime = with pkgs; [ bash coreutils findutils gnugrep gnused gawk diffutils patch
-    perl python3 gcc gnumake iverilog haskellPackages.sv2v sby yices z3 verilator yosys ];
+  runtime = (with pkgs; [ bash coreutils findutils gnugrep gnused gawk diffutils patch
+    perl python3 gcc gnumake haskellPackages.sv2v sby yices z3 ]) ++ [ iverilog verilator yosys ];
 }

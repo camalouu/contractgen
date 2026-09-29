@@ -24,12 +24,19 @@ public final class SpikeAtomParallelRunner {
     private final String spikeIsa;
     private final Set<RISCV_OBSERVATION_TYPE> allowed;
     private final int threads;
+    private final Path temporaryRoot;
 
     public SpikeAtomParallelRunner(Path spikeLibrary, String spikeIsa, Set<RISCV_OBSERVATION_TYPE> allowed, int threads) {
+        this(spikeLibrary, spikeIsa, allowed, threads, null);
+    }
+
+    public SpikeAtomParallelRunner(Path spikeLibrary, String spikeIsa, Set<RISCV_OBSERVATION_TYPE> allowed,
+                                   int threads, Path temporaryRoot) {
         this.spikeLibrary = spikeLibrary;
         this.spikeIsa = spikeIsa;
         this.allowed = allowed;
         this.threads = Math.max(1, threads);
+        this.temporaryRoot = temporaryRoot;
     }
 
     public Map<Integer, SpikeAtomClient.SpikeCaseAtoms> run(List<TestCase> tests) {
@@ -96,7 +103,10 @@ public final class SpikeAtomParallelRunner {
     private List<SpikeAtomClient.SpikeCaseAtoms> runProcessChunk(List<TestCase> tests, SpikeChunk chunk) {
         Path directory = null;
         try {
-            directory = Files.createTempDirectory("contract-spike-chunk-");
+            if (temporaryRoot != null) Files.createDirectories(temporaryRoot);
+            directory = temporaryRoot == null
+                    ? Files.createTempDirectory("contract-spike-chunk-")
+                    : Files.createTempDirectory(temporaryRoot, "contract-spike-chunk-");
             Path input = directory.resolve("testcases.json");
             Path output = directory.resolve("atoms.json");
             Files.writeString(input, RISCVTestCaseIO.toJSON(tests.subList(chunk.start(), chunk.end())));

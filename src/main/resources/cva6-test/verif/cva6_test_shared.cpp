@@ -54,3 +54,18 @@ extern "C" int contract_cva6_test_attacker_batch(
     }
     return 0;
 }
+
+extern "C" int contract_cva6_test_attacker_file_v1(
+    const char* directory, int max_cycles, int* status
+) {
+    if (directory == nullptr || status == nullptr) return -1;
+    try {
+        Cva6TestCaseImage test_case;
+        contract_cva6_load_legacy_dat_files(test_case, directory);
+        *status = status_code(contract_cva6_run_case(test_case, max_cycles));
+        return 0;
+    } catch (const std::exception&) {
+        *status = status_code(Cva6TestStatus::Error);
+        return -1;
+    }
+}
