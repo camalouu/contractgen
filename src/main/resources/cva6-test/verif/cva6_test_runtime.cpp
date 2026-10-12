@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "cva6_test_runtime.hpp"
 
 #include "Vtop.h"
@@ -123,4 +124,13 @@ void contract_cva6_load_legacy_dat_files(Cva6TestCaseImage& test_case, const std
     if (count && std::getline(count, line) && !line.empty()) {
         test_case.max_instr_count = static_cast<int>(std::strtoull(line.c_str(), nullptr, 16));
     }
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        Cva6TestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_cva6_run_case(test, max_cycles));
+    },0);
 }

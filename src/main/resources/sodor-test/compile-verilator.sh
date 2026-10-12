@@ -35,6 +35,20 @@ done
 perl -0pe 's/module\s+top\s*\(\s*\);/module top (input logic clk, input logic reset);/; s/\(\*\s*gclk\s*\*\)\s*reg\s+clk\s*;//; s/logic reset_1;\s*logic reset_2;\s*initial begin.*?\n\s*end/logic reset_1;\n    logic reset_2;\n    assign reset_1 = reset;\n    assign reset_2 = reset;/s; s/(control control \(\s*\.clk_i\s*\(clock\),)/$1\n        .reset_i                (reset),/; s/,\s*\)/\n)/g' \
   "$CORE_ROOT/verif/top.sv" > "$OUT_DIR/verif/top.sv"
 
+# Wire diagnostics in the verification top, leaving pinned core sources intact.
+python3 - "$OUT_DIR/verif/top.sv" <<'PYTRACE'
+import pathlib,re,sys
+p=pathlib.Path(sys.argv[1]);s=p.read_text()
+s=s.replace('    logic clock;', '    logic [31:0] trace_pc_1, trace_pc_2;\n    logic clock;',1)
+for n in (1,2): s=re.sub(r'(\.rvfi_pc_rdata\s*\()\s*(\))',r'\g<1>trace_pc_'+str(n)+r'\2',s,count=1)
+for n in (1,2):
+ s=s.replace('data_mem data_mem_'+str(n), 'data_mem #(.RAW_ADDRESS(1),.ASYNC(1)) data_mem_'+str(n))
+ s=re.sub(r'(\.data_be_i\s*\(data_be_'+str(n)+r'\),)',r'\1\n        .type_i(mem_typ_'+str(n)+'),',s)
+for n in (1,2): s=s.replace('.io_dmem_resp_valid         (data_gnt_'+str(n)+')','.io_dmem_resp_valid         (data_rvalid_'+str(n)+')')
+s=re.sub(r"(\.io_reset_vector\s*\()32'h0(\))",r"\g<1>32'h80\2",s)
+p.write_text(s)
+PYTRACE
+
 CORE_SOURCES=("$OUT_DIR"/core/*.v)
 VERIF_SOURCES=(
   "$OUT_DIR"/verif/atk.sv "$OUT_DIR"/verif/clk_sync.sv
@@ -49,7 +63,7 @@ verilator --cc --top-module sodor_test_top --timing \
   -Wno-fatal -Wno-WIDTH -Wno-INITIALDLY -Wno-LATCH -Wno-UNOPTFLAT \
   --threads-dpi none -O3 --Mdir "$OUT_DIR/obj_dir_shared" \
   --exe "$SOURCE_DIR/verif/sodor_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
-  -CFLAGS "-std=c++17 -O3 -fPIC -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_sodor_2_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vsodor_test_top.mk libcontract_sodor_2_test_attacker.so
 cp "$OUT_DIR/obj_dir_shared/libcontract_sodor_2_test_attacker.so" "$OUT_DIR/libcontract_sodor_2_test_attacker.so"

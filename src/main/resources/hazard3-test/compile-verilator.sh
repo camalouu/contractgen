@@ -48,6 +48,17 @@ for name in atk clk_sync top; do
   perl -0pe 's/,\s*\);/\n);/g' "$CORE_ROOT/verif/$name.sv" > "$OUT_DIR/verif/$name.sv"
 done
 
+# Instruction address acceptance and its one-cycle response are separate.
+python3 - "$OUT_DIR/verif/top.sv" <<'PYBUS'
+from pathlib import Path
+import re,sys
+p=Path(sys.argv[1]);s=p.read_text()
+for n in (1,2):
+ s=re.sub(r'    always @\(negedge clock_'+str(n)+r'\) begin.*?\n    end\n','',s,flags=re.S)
+ s=re.sub(r'(\.instr_o\s*\()instr_'+str(n)+r'(\))',r'\g<1>instr_rdata_'+str(n)+r'\2,\n        .instr_rvalid_o(instr_rvalid_'+str(n)+')',s)
+p.write_text(s)
+PYBUS
+
 VERIF_SOURCES=(
   "$OUT_DIR"/verif/atk.sv
   "$OUT_DIR"/verif/clk_sync.sv
@@ -70,7 +81,7 @@ VERILATOR_FLAGS=(
 
 verilator "${VERILATOR_FLAGS[@]}" --Mdir "$OUT_DIR"/obj_dir_shared \
   --exe "$SOURCE_DIR"/verif/hazard3_test_runtime.cpp "$SOURCE_DIR"/verif/hazard3_test_shared.cpp \
-  -CFLAGS "-std=c++17 -O3 -fPIC" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_hazard3_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR"/obj_dir_shared -f Vhazard3_test_top.mk libcontract_hazard3_test_attacker.so
 cp "$OUT_DIR"/obj_dir_shared/libcontract_hazard3_test_attacker.so "$OUT_DIR"/libcontract_hazard3_test_attacker.so

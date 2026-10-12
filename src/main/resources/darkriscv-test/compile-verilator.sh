@@ -21,7 +21,37 @@ mkdir -p "$OUT_DIR/verif" "$OUT_DIR/core"
 for file in "$CORE_ROOT"/core/*.v; do
   perl -0pe 's/,\s*\)/\n)/g' "$file" > "$OUT_DIR/core/$(basename "$file")"
 done
+cp "$CORE_ROOT"/core/*.vh "$OUT_DIR/core/"
+python3 - "$OUT_DIR/core/config_2stages.vh" <<'PYBOOT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]);s=p.read_text();old="`define __RESETPC__ 32'd0"
+assert s.count(old)==1, "Pinned DarkRISCV reset-vector layout changed"
+p.write_text(s.replace(old,"`define __RESETPC__ 32'h80"))
+PYBOOT
 perl -0pi -e 's/output FLUSH,/output reg FLUSH,/; s/^\s*reg FLUSH\s*;[^\n]*\n//m; s/^\s*wire \[31:0\] mem_addr;\n\s*assign mem_addr = rvfi_mem_addr;\n//m; s/old_regfile <= 0;/for (integer cg_i = 0; cg_i < 32; cg_i = cg_i + 1) old_regfile[cg_i] <= 0;/; s/old_regfile <= REG1;/for (integer cg_i = 0; cg_i < 32; cg_i = cg_i + 1) old_regfile[cg_i] <= REG1[cg_i];/' "$OUT_DIR/core/darkriscv_2stages.v"
+
+# Correct the imported RTL's SLTIU immediate operand. RISC-V sign-extends
+# the immediate before the unsigned comparison. Preserve the classic resource.
+python3 - "$OUT_DIR/core/darkriscv_2stages.v" <<'PYSLTIU'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); s=p.read_text()
+old='wire        [31:0] U2REGX = XMCC ? UIMM : U2REG;'
+assert s.count(old)==1, 'Pinned DarkRISCV immediate operand changed'
+s=s.replace(old,'wire        [31:0] U2REGX = XMCC ? SIMM : U2REG;')
+# The imported fork registers decode even in its two-stage configuration.
+# Keep the target fetch address through the flush bubble; otherwise the first
+# target instruction (and the reset instruction) is skipped.
+old='NXPC <= XRES ? `__RESETPC__ : HLT ? NXPC :'
+assert s.count(old)==1, 'Pinned DarkRISCV two-stage PC update changed'
+s=s.replace(old,'NXPC <= XRES ? `__RESETPC__ : HLT || FLUSH ? NXPC :')
+# JALR clears bit zero of its computed target, independently of alignment.
+old='wire [31:0] JVAL = SIMM + (JALR ? U1REG : PC);'
+assert s.count(old)==1, 'Pinned DarkRISCV jump target changed'
+s=s.replace(old,"wire [31:0] JVAL = (SIMM + (JALR ? U1REG : PC)) & (JALR ? 32'hfffffffe : 32'hffffffff);")
+p.write_text(s)
+PYSLTIU
 
 for name in atk clk_sync riscv_decoder; do
   perl -0pe 's/,\s*\)/\n)/g' "$CORE_ROOT/verif/$name.sv" > "$OUT_DIR/verif/$name.sv"
@@ -30,6 +60,29 @@ perl -0pe 's/module\s+top\s*\(\s*\);/module top (input logic clk, input logic re
   "$CORE_ROOT/verif/top.sv" > "$OUT_DIR/verif/top.sv"
 
 CORE_SOURCES=("$OUT_DIR"/core/*.v)
+# Wire diagnostics in the verification top, leaving pinned core sources intact.
+python3 - "$OUT_DIR/verif/top.sv" <<'PYTRACE'
+import pathlib,re,sys
+p=pathlib.Path(sys.argv[1]);s=p.read_text()
+s=s.replace('    logic clock;', '    logic [31:0] trace_pc_1, trace_pc_2;\n    logic clock;',1)
+for n in (1,2):
+    s=re.sub(r'\.rvfi_valid\s*\(retire_'+str(n)+r'\)', '.rvfi_valid()',s)
+    s=re.sub(r'\.rvfi_pc_rdata\s*\(\s*\)', '.rvfi_pc_rdata()',s,count=1)
+    s+=f"""
+// Actual commit metadata; sample the hardware register file after its write edge.
+"""
+    block=f"""
+    always @(posedge clock_{n}) begin
+        retire_{n} <= !reset && !core_{n}.XRES && !core_{n}.HLT && !core_{n}.FLUSH && core_{n}.decode_reg;
+        trace_pc_{n} <= core_{n}.PC;
+    end
+"""
+    s=s.replace('endmodule',block+'endmodule',1)
+
+for n in (1,2): s=s.replace('data_mem data_mem_'+str(n), 'data_mem #(.ASYNC(1)) data_mem_'+str(n))
+p.write_text(s)
+PYTRACE
+
 VERIF_SOURCES=(
   "$OUT_DIR"/verif/atk.sv "$OUT_DIR"/verif/clk_sync.sv
   "$COMMON_ROOT"/verif/data_mem.sv "$OUT_DIR"/verif/riscv_decoder.sv
@@ -43,7 +96,7 @@ verilator --cc --top-module darkriscv_test_top --timing \
   -Wno-fatal -Wno-WIDTH -Wno-INITIALDLY -Wno-LATCH -Wno-UNOPTFLAT \
   --threads-dpi none -O3 --Mdir "$OUT_DIR/obj_dir_shared" \
   --exe "$SOURCE_DIR/verif/darkriscv_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
-  -CFLAGS "-std=c++17 -O3 -fPIC -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_darkriscv_2_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vdarkriscv_test_top.mk libcontract_darkriscv_2_test_attacker.so
 cp "$OUT_DIR/obj_dir_shared/libcontract_darkriscv_2_test_attacker.so" "$OUT_DIR/libcontract_darkriscv_2_test_attacker.so"

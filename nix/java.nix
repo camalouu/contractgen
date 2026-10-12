@@ -8,6 +8,7 @@
   };
   mvnHash = "sha256-8X5h84M8AkFQL3Bm4Q+rklnJ6Se+/V7pbvLMUKfTU/w=";
   mvnParameters = "";
+  nativeBuildInputs = [ pkgs.stdenv.cc ];
   installPhase = ''
     mkdir -p $out/share/java
     cp target/contractgen-*.jar $out/share/java/contractgen.jar

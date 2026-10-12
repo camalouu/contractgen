@@ -22,7 +22,7 @@ in {
     done
     touch $out
   '');
-  workflow-smoke = pkgs.runCommand "contractgen-workflow-smoke" {} ''
+  workflow-smoke = pkgs.runCommand "contractgen-workflow-smoke" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     run_workflow() {
       processor="$1"
       isa="$2"
@@ -49,6 +49,14 @@ in {
       grep -q "Processor: $processor" "$output/summary.txt"
       grep -q 'Count: 1' "$output/summary.txt"
       grep -q 'RTL Executed: 1' "$output/summary.txt"
+      ${application}/bin/contractgen replay_synthesize_spike \
+        --processor "$processor" --isa "$isa" --contract BASE \
+        -t 2 -e "$output/testcases.json" -o "$output/replayed.json" \
+        --txt "$output/replayed-summary.txt" --disable-adaptive-skipping \
+        --cv32e40s-data-independent-timing "$timing" "''${extra[@]}"
+      grep -q 'RTL Executed: 1' "$output/replayed-summary.txt"
+      python3 ${./tests/compare-replay.py} "$output/contract.json" "$output/replayed.json"
+      python3 ${./tests/rocket-eligibility.py} ${application}/bin/contractgen "$output/eligibility" "$processor"
     }
 
     run_workflow IBEX_TEST BASE,M off
@@ -61,6 +69,42 @@ in {
     run_workflow CV32E40P_TEST BASE,M off
     run_workflow CV32E40S_TEST BASE,M off
     run_workflow CV32E40S_TEST BASE,M on
+    touch $out
+  '';
+  shared-reference-conformance = pkgs.runCommand "contractgen-shared-reference-conformance" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: drv:
+      "${tools.spike}/libexec/contract-spike-rtl-agreement ${drv}/lib/libcontract_${drv.atom}_attacker.so "
+        + (if builtins.elem name [ "sodor-2" "darkriscv-2" ] then "RV32I" else "RV32IM")
+        + lib.optionalString (builtins.elem name [ "ibex" "cv32e40p" "cv32e40s" ]) " misaligned"
+        + "\npython3 ${./tests/rtl-control-flow.py} ${drv}/lib/libcontract_${drv.atom}_attacker.so") attackers)}
+    touch $out
+  '';
+  rocket-conformance = pkgs.runCommand "contractgen-rocket-conformance" {
+    nativeBuildInputs = [ pkgs.stdenv.cc ];
+  } ''
+    source=${resources.assemble [ "rocket-test" ]}/rocket-test
+    $CXX -std=c++17 -O2 -UNDEBUG -I"$source/verif" \
+      "$source/tests/tilelink_memory_test.cpp" -o memory-test
+    ./memory-test
+    bash "$source/tests/runtime.sh" ${attackers.rocket}/lib/libcontract_rocket_test_attacker.so "$PWD/runtime-test"
+    ${tools.spike}/libexec/contract-spike-rtl-agreement ${attackers.rocket}/lib/libcontract_rocket_test_attacker.so
+    touch $out
+  '';
+  rocket-workflow = pkgs.runCommand "contractgen-rocket-workflow" {
+    nativeBuildInputs = [ pkgs.python3 ];
+  } ''
+    ${application}/bin/contractgen synth_new \
+      -p ROCKET_TEST -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
+      -n 64 -t 2 -s 1 --output-dir "$PWD/direct" \
+      --disable-adaptive-skipping
+    ${application}/bin/contractgen replay_synthesize_spike \
+      -p ROCKET_TEST -i BASE,M -c BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
+      -t 2 -e "$PWD/direct/testcases.json" \
+      -o "$PWD/replayed.json" --txt "$PWD/replayed-summary.txt" --disable-adaptive-skipping
+    grep -q 'RTL Executed: 64' direct/summary.txt
+    grep -q 'RTL Executed: 64' replayed-summary.txt
+    python3 ${./tests/compare-replay.py} direct/contract.json replayed.json
+    python3 ${./tests/rocket-eligibility.py} ${application}/bin/contractgen "$PWD/eligibility"
     touch $out
   '';
   formal = pkgs.runCommand "contractgen-formal-smoke" {

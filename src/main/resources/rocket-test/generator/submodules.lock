@@ -1,0 +1,6 @@
+ 52768c97a27b254c0cc0ac9401feb55b29e18c28 dependencies/cde (0.1.2-8-g52768c9)
+ e3bcc90db37f1aec9f8048813f4f0666098d9bee dependencies/chisel (2019-03-11-SNAPSHOT-4441-ge3bcc90db3)
+ fe5e131d4fc8adec14a3ce4a4935bb5c0a269871 dependencies/diplomacy (heads/master)
+ d93aa570806013dea479a92ba9bb33d1f2d4f69f dependencies/hardfloat (remotes/origin/dev-16-gd93aa57)
+ 5c06db33fc1e2130f67c045327b0ec949032df1d dependencies/hardfloat/berkeley-softfloat-3 (5c06db3)
+ 06b20075dd3c1a5d0dd007a93643282832221612 dependencies/hardfloat/berkeley-testfloat-3 (06b2007)

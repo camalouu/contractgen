@@ -11,13 +11,14 @@ module cv32e40p_obi_instr_mem #(
 );
     import "DPI-C" function int contract_simple_instr_word(input int core_id, input int word_index);
 
+    wire [31:0] image_addr = addr_i - 32'h80;
     assign gnt_o = req_i;
     initial begin rvalid_o = 1'b0; rdata_o = 32'h00000013; end
     always_ff @(posedge clk_i) begin
         rvalid_o <= req_i;
         if (req_i)
-            rdata_o <= ((addr_i >> 2) < MAX_INSTR)
-                    ? $unsigned(contract_simple_instr_word(ID, addr_i >> 2))
+            rdata_o <= ((image_addr >> 2) < MAX_INSTR)
+                    ? $unsigned(contract_simple_instr_word(ID, image_addr >> 2))
                     : 32'h00000013;
     end
 endmodule

@@ -21,7 +21,7 @@ verilator --cc --top-module cv32e40s_test_top -I"$CORE_ROOT/rtl/include" \
   "$SOURCE_DIR/verif/upstream.vlt" \
   --Mdir "$OUT_DIR/obj_dir" \
   --exe "$SOURCE_DIR/verif/cv32e40s_test_runtime.cpp" \
-  -CFLAGS "-std=c++17 -O3 -fPIC -I$SOURCE_DIR/verif" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif -I$SOURCE_DIR/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_cv32e40s_test_attacker.so \
   "${RTL_SOURCES[@]}" "$COMMON_ROOT/verif/clk_sync.sv" \
   "$SOURCE_DIR/verif/cv32e40s_mem.sv" "$SOURCE_DIR/verif/cv32e40s_test_top.sv"

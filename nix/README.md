@@ -46,8 +46,32 @@ never modify the Nix store.
 ## Validation
 
 `nix flake check` runs Java tests, CLI help, a native OR-Tools solve, parallel
-Spike extraction, all nine attacker harnesses, deterministic synthesis/replay
+Spike extraction, all ten attacker harnesses, deterministic synthesis/replay
 workflows, both CV32E40S timing settings, the legacy Icarus and Verilator
 matrices, and formal BMC/cover checks. RTL regeneration remains available as
 the separate `proteus-rtl` and `cva6-verilog` package builds because those are
 large deliverable artifacts rather than routine smoke checks.
+
+## Shared reference and Rocket
+
+The Spike derivation applies the checked-in `patches/spike-execution-model.patch`
+without changing its source revision or any simulator pin. Both C ABI entry
+points execute the sole shared `rv32-v1` reference using Spike instruction
+handlers. All Spike-backed workflows use it by default:
+
+```sh
+nix run . -- synth_new -p ROCKET_TEST -i BASE,M -c BASE \
+  -n 64 -t 2 -s 1 \
+  --output-dir results/rocket-test/64 --disable-adaptive-skipping
+```
+
+`attacker-rocket` compiles the imported generated RTL; it does not require the
+Scala elaboration toolchain. `shared-reference-conformance`, `rocket-conformance`
+and `rocket-workflow` are part of `nix flake check`. See
+[execution semantics and migration](../docs/EXECUTION_MODEL.md) and
+[Rocket usage](../docs/ROCKET_TEST_HARNESS.md).
+
+The Spike build strips generated debug sections before installation to avoid
+copying the large debug artifacts twice before Nix's normal fixup. Simulator
+revisions and compilation flags are unchanged. Native reference checks run before
+that stripping step.

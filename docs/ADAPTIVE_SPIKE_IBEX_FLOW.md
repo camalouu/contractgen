@@ -1,5 +1,10 @@
 # Adaptive Spike / IBEX_TEST Flow
 
+All Spike-backed workflows now use the shared core-independent `rv32-v1`
+reference described in [EXECUTION_MODEL.md](EXECUTION_MODEL.md). Attacker evidence
+filtering remains separate from architectural execution. The Ibex native adapter
+uses persistent zero-filled memory and actual RVFI retirement bounds.
+
 This note summarizes the current implementation of the Spike-based atom flow and the simplified IBEX_TEST attacker flow.
 
 ## Goal
@@ -79,19 +84,19 @@ This avoids per-test `.dat` file generation for the IBEX_TEST shared-library pat
 
 The native side creates a fresh Verilated `Vtop` for each full or minimized-prefix run. Testcase data is passed through arrays instead of filesystem memory-init files.
 
-The harness retains the established per-core instruction-fetch completion
-policy. This is important for liveness after the two cores take different
-control-flow paths; paired retirement alone is not a safe completion condition
-with the current clock synchronizer.
+The native harness completes at the requested paired architectural RVFI
+retirement bound. It keeps serving the immutable instruction image, with NOPs
+outside it, throughout that prefix. The cycle budget remains the liveness guard
+for a core that cannot complete the requested prefix.
 
-For an attacker-positive testcase, the native runner reproduces the historical
-Ibex prefix minimization without generating a VCD. It records the two fetch
-counters and paired retirement counter when `atk_equiv_o` first changes from
-true to false, then reruns fresh Verilator models with decreasing instruction-
-fetch bounds while the testcase still fails. One final run at the smallest
-failing fetch bound supplies the cutoff: its final paired retirement count.
-This is the same execution prefix from which the old RVFI path extracted atoms.
-Attacker-negative, timeout, and error results return no cutoff.
+For an attacker-positive testcase, the native runner minimizes the execution
+prefix without generating a VCD. It records fetch and retirement counters when
+`atk_equiv_o` first changes from true to false, then reruns fresh models with
+decreasing retirement bounds while the testcase still fails. A final run at the
+smallest failing bound supplies its paired-retirement cutoff. Fetch counters
+remain diagnostic; they no longer determine completion or the minimized bound.
+Attacker-negative, timeout, and error results return no failure cutoff. Historical
+fetch-based experiment boundaries require the archived environment.
 
 For every full run, the v4 harness also records the last absolute RVFI
 retirement at which either core retires a non-NOP instruction. This is compact
@@ -146,7 +151,7 @@ IBEX_TEST:
 - each thread creates its own `IBEXTestAttackerClient`
 - work is distributed by exact atom-signature groups
 - attacker-positive cases may run several fresh native models internally while
-  finding the smallest failing fetch bound; no VCD is written or parsed
+  finding the smallest failing retirement bound; no VCD is written or parsed
 - each native batch call currently runs one testcase at a time inside a signature group
 
 ## Timing Interpretation

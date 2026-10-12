@@ -13,6 +13,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SynthesizeNewTest {
     @Test
+    void executionModelIsExplicitAndValidatedSeparatelyFromProcessor() {
+        var direct = new SynthesizeNew();
+        new picocli.CommandLine(direct).parseArgs("-p", "ROCKET_TEST", "-i", "BASE,M",
+                "-c", "BASE", "-n", "1", "-t", "1", "-s", "1", "-o", "unused.json",
+                "--execution-model", "rv32-v1", "--rocket-test-lib", "/tmp/rocket.so");
+        assertEquals(contractgen.riscv.isa.spike.ExecutionModel.RV32_V1, direct.executionModel);
+        assertEquals(new File("/tmp/rocket.so"), direct.rocketTestLib);
+        ReplaySynthesizeSpike.validateExecutionModel(direct.processor, direct.executionModel);
+        for (var processor : ReplayAttackerHarness.values())
+            ReplaySynthesizeSpike.validateExecutionModel(processor, direct.executionModel);
+        assertThrows(picocli.CommandLine.ParameterException.class, () ->
+                new picocli.CommandLine(new SynthesizeNew()).parseArgs("--execution-model", "legacy-v1"));
+        assertEquals(contractgen.riscv.isa.spike.ExecutionModel.RV32_V1, new SynthesizeNew().executionModel);
+        assertEquals(contractgen.riscv.isa.spike.ExecutionModel.RV32_V1, new ReplaySynthesizeSpike().executionModel);
+    }
+
+    @Test
     void parsesCv32e40sOptionsInBothNewWorkflowCommands() {
         var direct = new SynthesizeNew();
         new picocli.CommandLine(direct).parseArgs("-p", "CV32E40S_TEST", "-i", "BASE,M",
@@ -52,6 +69,22 @@ class SynthesizeNewTest {
     }
 
     @Test
+    void preventsArtifactsSummariesAndSidecarsFromOverwritingEachOther() {
+        assertThrows(IllegalArgumentException.class, () -> SynthesizeNew.resolveOutputs(null,
+                new File("same.json"), new File("./same.json"), null));
+        assertThrows(IllegalArgumentException.class, () -> SynthesizeNew.resolveOutputs(null,
+                new File("cases.json.execution.json"), new File("cases.json"), null));
+        assertThrows(IllegalArgumentException.class, () -> SynthesizeNew.resolveOutputs(null,
+                new File("contract.json"), new File("cases.json"), new File("contract.json.execution.json")));
+        var replay = new ReplaySynthesizeSpike();
+        replay.testcases = new File("cases.json");
+        replay.out = new File("cases.json.execution.json");
+        assertThrows(IllegalArgumentException.class, replay::call);
+        replay.out = new File("./cases.json");
+        assertThrows(IllegalArgumentException.class, replay::call);
+    }
+
+    @Test
     void derivesStableNamesFromOutputDirectory() {
         assertEquals(
                 new SynthesizeNew.OutputPaths(
@@ -79,6 +112,19 @@ class SynthesizeNewTest {
                 ReplayAttackerHarness.SODOR_2_TEST, Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M)));
         assertThrows(IllegalArgumentException.class, () -> ReplaySynthesizeSpike.validateHarnessIsa(
                 ReplayAttackerHarness.DARKRISCV_2_TEST, Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M)));
+    }
+
+    @Test
+    void importedMInstructionsCannotBypassRv32ICoreValidation() {
+        var program = new contractgen.riscv.isa.RISCVProgram(java.util.Map.of(),
+                java.util.List.of(contractgen.riscv.isa.RISCVInstruction.MUL(1, 2, 3)));
+        var testcase = new contractgen.riscv.isa.RISCVTestCase(program, program, 2, 7);
+        for (var processor : java.util.List.of(ReplayAttackerHarness.SODOR_2_TEST,
+                ReplayAttackerHarness.DARKRISCV_2_TEST))
+            assertThrows(IllegalArgumentException.class, () ->
+                    ReplaySynthesizeSpike.validateImportedHarnessIsa(processor, java.util.List.of(testcase)));
+        ReplaySynthesizeSpike.validateImportedHarnessIsa(ReplayAttackerHarness.ROCKET_TEST,
+                java.util.List.of(testcase));
     }
 
     @Test

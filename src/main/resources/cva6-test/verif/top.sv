@@ -13,7 +13,15 @@ module top (
     output logic atk_equiv_o,
     output logic trap_o
 );
-    localparam config_pkg::cva6_cfg_t Cfg = build_config_pkg::build_config(cva6_config_pkg::cva6_cfg);
+    function automatic config_pkg::cva6_cfg_t reference_cfg();
+        config_pkg::cva6_cfg_t cfg = build_config_pkg::build_config(cva6_config_pkg::cva6_cfg);
+        // The experimental environment serves instructions at every RV32 address.
+        cfg.NrExecuteRegionRules = 1;
+        cfg.ExecuteRegionAddrBase = '0;
+        cfg.ExecuteRegionLength = 1024'(64'h1_0000_0000);
+        return cfg;
+    endfunction
+    localparam config_pkg::cva6_cfg_t Cfg = reference_cfg();
     typedef `RVFI_PROBES_INSTR_T(Cfg) rvfi_probes_instr_t;
     typedef `RVFI_PROBES_CSR_T(Cfg) rvfi_probes_csr_t;
     typedef struct packed {
@@ -43,8 +51,8 @@ module top (
     logic we_2;
     logic [63:0] addr_1;
     logic [63:0] addr_2;
-    logic [3:0] be_1;
-    logic [3:0] be_2;
+    logic [7:0] be_1;
+    logic [7:0] be_2;
     logic [63:0] data_w_1;
     logic [63:0] data_w_2;
     logic [63:0] data_r_1;
@@ -61,8 +69,8 @@ module top (
     logic trap_2;
     rvfi_probes_t rvfi_1;
     rvfi_probes_t rvfi_2;
-    rvfi_instr_t rvfi_instr_1;
-    rvfi_instr_t rvfi_instr_2;
+    rvfi_instr_t [Cfg.NrCommitPorts-1:0] rvfi_instr_1;
+    rvfi_instr_t [Cfg.NrCommitPorts-1:0] rvfi_instr_2;
     rvfi_csr_t rvfi_csr_1;
     rvfi_csr_t rvfi_csr_2;
 
@@ -78,6 +86,7 @@ module top (
         .enable_i(enable_1),
         .req_i(req_1),
         .we_i(we_1),
+        .fetch_i(!axi2mem_1.ax_req_d.id[0]),
         .addr_i(addr_1),
         .be_i(be_1),
         .data_i(data_w_1),
@@ -91,6 +100,7 @@ module top (
         .enable_i(enable_2),
         .req_i(req_2),
         .we_i(we_2),
+        .fetch_i(!axi2mem_2.ax_req_d.id[0]),
         .addr_i(addr_2),
         .be_i(be_2),
         .data_i(data_w_2),
@@ -166,10 +176,10 @@ module top (
         .user_i()
     );
 
-    cva6 core_1 (
+    cva6 #(.CVA6Cfg(Cfg)) core_1 (
         .clk_i(clock_1),
         .rst_ni(reset_1),
-        .boot_addr_i(64'h8000_0000),
+        .boot_addr_i(64'h80),
         .hart_id_i(32'h0),
         .irq_i(2'b0),
         .ipi_i(1'b0),
@@ -186,10 +196,10 @@ module top (
         .trap_o()
     );
 
-    cva6 core_2 (
+    cva6 #(.CVA6Cfg(Cfg)) core_2 (
         .clk_i(clock_2),
         .rst_ni(reset_2),
-        .boot_addr_i(64'h8000_0000),
+        .boot_addr_i(64'h80),
         .hart_id_i(32'h0),
         .irq_i(2'b0),
         .ipi_i(1'b0),
@@ -207,7 +217,7 @@ module top (
     );
 
     cva6_rvfi #(
-        .CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg)),
+        .CVA6Cfg(Cfg),
         .rvfi_instr_t(rvfi_instr_t),
         .rvfi_csr_t(rvfi_csr_t),
         .rvfi_probes_instr_t(rvfi_probes_instr_t),
@@ -222,7 +232,7 @@ module top (
     );
 
     cva6_rvfi #(
-        .CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg)),
+        .CVA6Cfg(Cfg),
         .rvfi_instr_t(rvfi_instr_t),
         .rvfi_csr_t(rvfi_csr_t),
         .rvfi_probes_instr_t(rvfi_probes_instr_t),
@@ -236,34 +246,62 @@ module top (
         .rvfi_csr_o(rvfi_csr_2)
     );
 
-    assign retire_1 = rvfi_instr_1.valid;
-    assign retire_2 = rvfi_instr_2.valid;
-    assign trap_1 = rvfi_instr_1.trap;
-    assign trap_2 = rvfi_instr_2.trap;
+    import "DPI-C" function void contract_reference_retire(input int core_id,
+        input int unsigned pc, input int unsigned instruction, input int rd, input int unsigned value, input int trap);
+    integer retired_1 = 0, retired_2 = 0;
+    logic run_1 = 1, run_2 = 1;
+    integer edge_1 = 0, edge_2 = 0, observed_1 = -1, observed_2 = -1;
+    always @(posedge clock_1) edge_1 <= edge_1 + 1;
+    always @(posedge clock_2) edge_2 <= edge_2 + 1;
+    int bound;
+    initial begin bound = contract_cva6_max_instr_count(); finished_o = 0; trap_o = 0; end
+    import "DPI-C" function int contract_cva6_max_instr_count();
+    assign clock_1 = clock && run_1;
+    assign clock_2 = clock && run_2;
+    // Collect every commit port in order, once per actual clock edge. The pinned
+    // RVFI monitor does not drive order tags; a gated core holds its outputs.
+    always @(negedge clock) begin
+        if (!rst_ni) begin
+            retired_1 = 0; retired_2 = 0; observed_1 = edge_1; observed_2 = edge_2;
+            run_1 = 1; run_2 = 1; finished_o = 0; trap_o = 0;
+        end else if (!finished_o) begin
+            for (int port_index=0;port_index<Cfg.NrCommitPorts;port_index++) begin
+                if (edge_1 != observed_1 && rvfi_instr_1[port_index].valid) begin
+                    if (retired_1 < bound) begin
+                        contract_reference_retire(1,rvfi_instr_1[port_index].pc_rdata,rvfi_instr_1[port_index].insn,
+                            rvfi_instr_1[port_index].rd_addr,rvfi_instr_1[port_index].rd_wdata,rvfi_instr_1[port_index].trap);
+                        trap_o = trap_o || rvfi_instr_1[port_index].trap;
+                        retired_1++;
+                    end
 
-    atk atk (
-        .clk_i(clock),
-        .atk_observation_1_i(clock_1),
-        .atk_observation_2_i(clock_2),
-        .atk_equiv_o(atk_equiv_o)
-    );
+                end
+                if (edge_2 != observed_2 && rvfi_instr_2[port_index].valid) begin
+                    if (retired_2 < bound) begin
+                        contract_reference_retire(2,rvfi_instr_2[port_index].pc_rdata,rvfi_instr_2[port_index].insn,
+                            rvfi_instr_2[port_index].rd_addr,rvfi_instr_2[port_index].rd_wdata,rvfi_instr_2[port_index].trap);
+                        trap_o = trap_o || rvfi_instr_2[port_index].trap;
+                        retired_2++;
+                    end
 
-    clk_sync clk_sync (
-        .clk_i(clock),
-        .retire_1_i(retire_1),
-        .retire_2_i(retire_2),
-        .clk_1_o(clock_1),
-        .clk_2_o(clock_2),
-        .retire_o(retire)
-    );
+                end
+            end
+            observed_1 = edge_1; observed_2 = edge_2;
+            finished_o = retired_1 >= bound && retired_2 >= bound;
+            run_1 = retired_1 <= retired_2 && retired_1 < bound;
+            run_2 = retired_2 <= retired_1 && retired_2 < bound;
+        end
+    end
 
-    control control (
-        .clk_i(clock),
-        .retire_i(retire),
-        .finished_o(finished_o)
-    );
+    // run flags are stable throughout the high clock phase. Sampling them
+    // avoids delta-cycle races between the two combinational clock outputs.
+    initial atk_equiv_o = 1;
+    always @(posedge clock or negedge rst_ni) begin
+        if (!rst_ni) atk_equiv_o <= 1;
+        else if (!finished_o && run_1 != run_2) begin
+            atk_equiv_o <= 0;
+        end
+    end
 
-    assign trap_o = trap_1 || trap_2;
 endmodule
 
 module axi_converter (

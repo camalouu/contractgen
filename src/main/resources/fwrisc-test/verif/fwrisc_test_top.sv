@@ -7,8 +7,12 @@ module fwrisc_test_top (
     output logic finished_o,
     output logic atk_equiv_o
 );
+    import "DPI-C" function void contract_reference_retire(input int core_id, input int unsigned pc, input int unsigned instruction, input int rd, input int unsigned value, input int trap);
+    import "DPI-C" function void contract_reference_write(input int core_id, input int rd, input int unsigned value);
     import "DPI-C" function int contract_simple_instr_word(input int core_id, input int word_index);
 
+    logic [4:0] trace_rd_1, trace_rd_2;
+    logic [31:0] trace_data_1, trace_data_2;
     logic clock_1, clock_2;
     logic retire_1, retire_2, retire;
     logic enable_1, enable_2;
@@ -20,8 +24,8 @@ module fwrisc_test_top (
     logic [31:0] drdata_1, drdata_2;
     logic dready_1, dready_2;
 
-    wire [31:0] instr_index_1 = (iaddr_1 - 32'h8000_0000) >> 2;
-    wire [31:0] instr_index_2 = (iaddr_2 - 32'h8000_0000) >> 2;
+    wire [31:0] instr_index_1 = (iaddr_1 - 32'h80) >> 2;
+    wire [31:0] instr_index_2 = (iaddr_2 - 32'h80) >> 2;
     assign idata_1 = enable_1 && (instr_index_1 < `MAX_INSTR)
             ? $unsigned(contract_simple_instr_word(1, instr_index_1)) : `NO_OP;
     assign idata_2 = enable_2 && (instr_index_2 < `MAX_INSTR)
@@ -68,4 +72,12 @@ module fwrisc_test_top (
         .instr_addr_1_i(iaddr_1), .instr_addr_2_i(iaddr_2),
         .enable_1_o(enable_1), .enable_2_o(enable_2), .finished_o(finished_o)
     );
+    always @(negedge clock_1) if (!reset && retire_1)
+        contract_reference_retire(1,core_1.tracer_pc,core_1.tracer_instr,0,0,core_1.trap);
+    always @(negedge clock_2) if (!reset && retire_2)
+        contract_reference_retire(2,core_2.tracer_pc,core_2.tracer_instr,0,0,core_2.trap);
+    always @(posedge clock_1) if (!reset && core_1.rd_wen)
+        contract_reference_write(1, int'(core_1.rd_waddr), core_1.rd_wdata);
+    always @(posedge clock_2) if (!reset && core_2.rd_wen)
+        contract_reference_write(2, int'(core_2.rd_waddr), core_2.rd_wdata);
 endmodule

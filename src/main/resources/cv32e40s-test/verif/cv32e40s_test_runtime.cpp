@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "cv32e40s_test_runtime.hpp"
 #include "Vcv32e40s_test_top.h"
 #include "verilated.h"
@@ -115,4 +116,13 @@ extern "C" int contract_cv32e40s_test_attacker_batch_v1(
         }
     }
     return 0;
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        Cv32e40sCase test; test.max_instructions=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(cv32e40s_run(test, max_cycles, false));
+    },2);
 }

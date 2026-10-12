@@ -44,6 +44,8 @@ cp verif/cva6_test_runtime.hpp "$LR_VERIF_OUT_DIR"/cva6_test_runtime.hpp
 cp verif/cva6_test_runtime.cpp "$LR_VERIF_OUT_DIR"/cva6_test_runtime.cpp
 cp verif/cva6_test_shared.cpp "$LR_VERIF_OUT_DIR"/cva6_test_shared.cpp
 
+cp "${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif/contract_reference_trace.hpp" "$LR_VERIF_OUT_DIR/contract_reference_trace.hpp"
+
 export CVA6_REPO_DIR="$LR_VERIF_OUT_DIR"/cva6
 export HPDCACHE_DIR="$CVA6_REPO_DIR"/core/cache_subsystem/hpdcache
 export TARGET_CFG=cv32a6_imac_sv0

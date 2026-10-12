@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "simple_test_runtime.hpp"
 
 #include "Vdarkriscv_test_top.h"
@@ -60,4 +61,17 @@ SimpleTestStatus contract_simple_run_case(const SimpleTestCaseImage& test_case, 
     top->final();
     current_case = nullptr;
     return status;
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        SimpleTestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_simple_run_case(test, max_cycles));
+    },0);
+}
+
+extern "C" int contract_dark_debug_enable() {
+    return contract_reference_trace::active && std::getenv("CONTRACT_TRACE_DEBUG");
 }

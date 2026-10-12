@@ -20,15 +20,21 @@ import java.util.Set;
 
 public final class SpikeAtomClient {
     private final ContractSpikeLibrary library;
+    private final ExecutionModel executionModel;
     private static final Gson GSON = new Gson();
 
     private interface ContractSpikeLibrary extends Library {
-        Pointer contract_spike_atoms_json(String testcasesJson, String isa, int ordinal);
+        Pointer contract_spike_atoms_json_v2(String testcasesJson, String isa, int ordinal, String executionModel);
 
         void contract_spike_free(Pointer pointer);
     }
 
     public SpikeAtomClient(Path libraryPath) {
+        this(libraryPath, ExecutionModel.RV32_V1);
+    }
+
+    public SpikeAtomClient(Path libraryPath, ExecutionModel executionModel) {
+        this.executionModel = java.util.Objects.requireNonNull(executionModel);
         this.library = Native.load(libraryPath.toAbsolutePath().toString(), ContractSpikeLibrary.class);
     }
 
@@ -37,12 +43,33 @@ public final class SpikeAtomClient {
     }
 
     public String runAllJson(String testcasesJson, String isa) {
-        Pointer pointer = library.contract_spike_atoms_json(testcasesJson, isa, -1);
+        Pointer pointer;
+        try {
+            pointer = library.contract_spike_atoms_json_v2(testcasesJson, isa, -1, executionModel.toString());
+        } catch (UnsatisfiedLinkError e) {
+            throw new IllegalStateException("Spike library lacks the versioned execution-model ABI; rebuild "
+                    + "with nix build .#spike (contract_spike_atoms_json_v2).", e);
+        }
         if (pointer == null) {
             throw new IllegalStateException("Spike atom library returned null");
         }
         try {
-            return pointer.getString(0);
+            String json = pointer.getString(0);
+            {
+                var response = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+                if (response.has("error"))
+                    throw new IllegalStateException("Spike atom library failed: " + response.get("error").getAsString());
+                if (!response.has("execution_model")
+                        || !executionModel.toString().equals(response.get("execution_model").getAsString()))
+                    throw new IllegalStateException("Spike returned an incompatible execution model");
+                for (var raw : response.getAsJsonArray("cases")) {
+                    var requirement = raw.getAsJsonObject().get("requires_misaligned_data_access");
+                    if (requirement == null || !requirement.isJsonPrimitive()
+                            || !requirement.getAsJsonPrimitive().isBoolean())
+                        throw new IllegalStateException("Spike library lacks execution requirements; rebuild the shared reference.");
+                }
+            }
+            return json;
         } finally {
             library.contract_spike_free(pointer);
         }
@@ -94,7 +121,7 @@ public final class SpikeAtomClient {
             }
         }
         return new SpikeCaseAtoms(spikeCase.ordinal, spikeCase.case_index, observations, firstRetire,
-                instructionPairs, pairFirstRetire, spikeCase.error);
+                instructionPairs, pairFirstRetire, spikeCase.error, spikeCase.requires_misaligned_data_access);
     }
 
     public record SpikeCaseAtoms(
@@ -104,7 +131,8 @@ public final class SpikeAtomClient {
             Map<RISCVObservation, Integer> firstRetire,
             Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairs,
             Map<Pair<RISCV_TYPE, RISCV_TYPE>, Integer> pairFirstRetire,
-            String error
+            String error,
+            boolean requiresMisalignedDataAccess
     ) {
         public SpikeCaseAtoms {
             Set<RISCVObservation> sortedAtoms = new java.util.TreeSet<>(
@@ -127,6 +155,13 @@ public final class SpikeAtomClient {
         public SpikeCaseAtoms(int ordinal, int caseIndex, Set<RISCVObservation> atoms,
                               Map<RISCVObservation, Integer> firstRetire, String error) {
             this(ordinal, caseIndex, atoms, firstRetire, Set.of(), Map.of(), error);
+        }
+
+        public SpikeCaseAtoms(int ordinal, int caseIndex, Set<RISCVObservation> atoms,
+                              Map<RISCVObservation, Integer> firstRetire,
+                              Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairs,
+                              Map<Pair<RISCV_TYPE, RISCV_TYPE>, Integer> pairFirstRetire, String error) {
+            this(ordinal, caseIndex, atoms, firstRetire, instructionPairs, pairFirstRetire, error, false);
         }
 
         public OptionalInt firstRetire(RISCVObservation atom) {
@@ -156,6 +191,7 @@ public final class SpikeAtomClient {
         List<SpikeAtom> atoms;
         List<SpikeInstructionPair> instruction_pairs;
         String error;
+        boolean requires_misaligned_data_access;
     }
 
     private static final class SpikeAtom {

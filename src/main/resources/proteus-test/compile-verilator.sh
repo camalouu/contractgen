@@ -37,7 +37,7 @@ FLAGS="--top-module top -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT -Wno-LATCH -Wno-INI
 
 verilator --cc $FLAGS --Mdir obj_dir_shared --exe \
   proteus_test_runtime.cpp proteus_test_shared.cpp \
-  -CFLAGS "-std=c++17 -fPIC" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_proteus_test_attacker.so $SOURCES
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared -f Vtop.mk libcontract_proteus_test_attacker.so
 cp obj_dir_shared/libcontract_proteus_test_attacker.so .

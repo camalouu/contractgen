@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "simple_test_runtime.hpp"
 #include "Vcv32e40p_test_top.h"
 #include "verilated.h"
@@ -23,14 +24,32 @@ SimpleTestStatus contract_simple_run_case(const SimpleTestCaseImage& test_case, 
     auto top = std::make_unique<Vcv32e40p_test_top>(context.get());
     SimpleTestStatus status = SimpleTestStatus::Timeout;
     const int cycles = max_cycles > 0 ? max_cycles : 10000;
+    // Honor the official RVFI monitor's delayed sampling and timed events.
+    auto edge = [&](int value) {
+        top->clk=value; top->eval();
+        const uint64_t target=context->time()+5000;
+        while(top->eventsPending() && top->nextTimeSlot()<=target) {
+            context->time(top->nextTimeSlot()); top->eval();
+        }
+        context->time(target); top->eval();
+    };
     top->rst_ni = 0;
-    for (int i = 0; i < 10; i++) { top->clk = 0; top->eval(); top->clk = 1; top->eval(); }
+    for (int i=0;i<10;i++) { edge(0); edge(1); }
     top->rst_ni = 1;
-    for (int i = 0; i < cycles; i++) {
-        top->clk = 0; top->eval();
-        if (top->finished_o || context->gotFinish()) { status = top->atk_equiv_o ? SimpleTestStatus::Success : SimpleTestStatus::Fail; break; }
-        top->clk = 1; top->eval();
-        if (top->finished_o || context->gotFinish()) { status = top->atk_equiv_o ? SimpleTestStatus::Success : SimpleTestStatus::Fail; break; }
+    for(int i=0;i<cycles;i++) {
+        edge(0);
+        if(top->finished_o || context->gotFinish()) { status=top->atk_equiv_o ? SimpleTestStatus::Success : SimpleTestStatus::Fail; break; }
+        edge(1);
+        if(top->finished_o || context->gotFinish()) { status=top->atk_equiv_o ? SimpleTestStatus::Success : SimpleTestStatus::Fail; break; }
     }
     top->final(); current_case = nullptr; return status;
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        SimpleTestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_simple_run_case(test, max_cycles));
+    },0);
 }

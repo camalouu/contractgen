@@ -12,6 +12,8 @@ module top(
     output logic        rvfi_trap_1_o,
     output logic        rvfi_trap_2_o
 );
+    import "DPI-C" function void contract_reference_retire(input int core_id,
+        input int unsigned pc, input int unsigned instruction, input int rd, input int unsigned value, input int trap);
     logic reset;
     integer reset_edges;
     initial begin
@@ -114,4 +116,6 @@ module top(
     control controller(
         .clk_i(clk), .reset_i(reset), .paired_retire_i(paired_retire),
         .finished_o(finished_o), .retire_count_o(retire_count_o));
+    always @(posedge clock_1) if (rvfi_valid_1_o) contract_reference_retire(1,core_1.writeback_out_PC,rvfi_insn_1_o,core_1.writeback_RegisterFileAccessor_regFileIo_write ? core_1.writeback_RegisterFileAccessor_regFileIo_rd : 0,core_1.writeback_RegisterFileAccessor_regFileIo_data,rvfi_trap_1_o);
+    always @(posedge clock_2) if (rvfi_valid_2_o) contract_reference_retire(2,core_2.writeback_out_PC,rvfi_insn_2_o,core_2.writeback_RegisterFileAccessor_regFileIo_write ? core_2.writeback_RegisterFileAccessor_regFileIo_rd : 0,core_2.writeback_RegisterFileAccessor_regFileIo_data,rvfi_trap_2_o);
 endmodule

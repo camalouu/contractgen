@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "proteus_test_runtime.hpp"
 
 #include "Vtop.h"
@@ -116,4 +117,13 @@ ProteusTestRunResult contract_proteus_run_case(const ProteusTestCaseImage& test_
     }
     result.failure_cutoff = minimized.final_retire;
     return result;
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        ProteusTestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_proteus_run_case(test, max_cycles).status);
+    },0);
 }

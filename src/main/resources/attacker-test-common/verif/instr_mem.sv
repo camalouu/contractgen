@@ -13,20 +13,10 @@ module instr_mem #(
 );
     import "DPI-C" function int contract_simple_instr_word(input int core_id, input int word_index);
 
-    initial begin
-        instr_o = `NO_OP;
-        instr_gnt_o = 1'b0;
-    end
-
-    always @(posedge clk_i) begin
-        if (instr_req_i) begin
-            instr_o <= enable_i && ((instr_addr_i >> 2) < `MAX_INSTR)
-                    ? $unsigned(contract_simple_instr_word(ID, instr_addr_i >> 2))
-                    : `NO_OP;
-            instr_gnt_o <= 1'b1;
-        end else begin
-            instr_o <= `NO_OP;
-            instr_gnt_o <= 1'b0;
-        end
+    wire [31:0] image_addr = instr_addr_i - 32'h80;
+    assign instr_gnt_o = instr_req_i;
+    always_comb begin
+        instr_o = enable_i && ((image_addr >> 2) < `MAX_INSTR)
+            ? $unsigned(contract_simple_instr_word(ID,image_addr >> 2)) : `NO_OP;
     end
 endmodule

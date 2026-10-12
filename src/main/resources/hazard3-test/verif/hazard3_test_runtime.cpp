@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "hazard3_test_runtime.hpp"
 
 #include "Vhazard3_test_top.h"
@@ -56,4 +57,13 @@ Hazard3TestStatus contract_hazard3_run_case(const Hazard3TestCaseImage& test_cas
     top->final();
     current_case = nullptr;
     return status;
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        Hazard3TestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_hazard3_run_case(test, max_cycles));
+    },0);
 }

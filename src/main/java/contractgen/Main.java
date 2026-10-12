@@ -30,6 +30,9 @@ import contractgen.riscv.isa.extractor.DarkRISCVExtractor;
 import contractgen.riscv.isa.extractor.Sodor5Extractor;
 import contractgen.riscv.isa.extractor.SodorExtractor;
 import contractgen.riscv.isa.spike.SpikeAtomClient;
+import contractgen.riscv.isa.spike.ExecutionModel;
+import contractgen.riscv.rocket_test.RocketTestConfiguration;
+import contractgen.riscv.isa.spike.ExecutionMetadata;
 import contractgen.riscv.isa.spike.SpikeAtomParallelRunner;
 import contractgen.riscv.isa.spike.SpikeAtomsWorker;
 import contractgen.riscv.isa.tests.RISCVIterativeTests;
@@ -246,7 +249,7 @@ class Synthesize implements Callable<Integer> {
     }
 }
 
-@Command(name = "synth_new", description = "Synthesize using Spike for contract atoms and an attacker-only RTL harness for attacker labels.")
+@Command(name = "synth_new", mixinStandardHelpOptions = true, description = "Synthesize using Spike for contract atoms and an attacker-only RTL harness for attacker labels.")
 class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"-p", "--processor"}, required = true, description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}")
     ReplayAttackerHarness processor;
@@ -332,8 +335,15 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so.")
     File cv32e40sTestLib;
 
+    @Option(names = "--rocket-test-lib", description = "Rocket attacker library; defaults to CONTRACT_ROCKET_TEST_LIB or the compilation output.")
+    File rocketTestLib;
+
     @Option(names = {"--cv32e40s-data-independent-timing"}, description = "CV32E40S timing protection: ${COMPLETION-CANDIDATES}.", defaultValue = "off")
     CV32E40STestAttackerClient.TimingMode cv32e40sTiming = CV32E40STestAttackerClient.TimingMode.off;
+
+    @Option(names = "--execution-model", hidden = true, defaultValue = "rv32-v1", converter = ExecutionModel.Converter.class,
+            description = "Shared reference specification (only rv32-v1 is supported).")
+    ExecutionModel executionModel = ExecutionModel.RV32_V1;
 
     @Option(names = {"--spike-isa"}, description = "Spike ISA string.", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
@@ -355,6 +365,7 @@ class SynthesizeNew implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        ReplaySynthesizeSpike.validateExecutionModel(processor, executionModel);
         OutputPaths outputs = resolveOutputs(outputDir, out, testcasesOut, txt);
         out = outputs.contract().toFile();
         testcasesOut = outputs.testcases().toFile();
@@ -373,6 +384,8 @@ class SynthesizeNew implements Callable<Integer> {
             throw new IllegalArgumentException("PROTEUS_TEST direct synthesis does not support --reset-sequence.");
         }
 
+        // Preserve the established per-processor generation stream and seed behavior.
+        // Replay eligibility independently allows misalignment on capable cores.
         boolean allowMisalignedMemory = processor == ReplayAttackerHarness.IBEX_TEST;
         TestCases generated = new RISCVIterativeTests(
                 isa,
@@ -392,6 +405,7 @@ class SynthesizeNew implements Callable<Integer> {
         Path testcasePath = resolveTestcasesOutput(out, testcasesOut);
         try {
             RISCVTestCaseIO.write(testcasePath, tests);
+            ExecutionMetadata.write(testcasePath, executionModel, spikeIsa);
         } catch (IOException e) {
             throw new RuntimeException("Failed to write generated testcases to " + testcasePath, e);
         }
@@ -415,8 +429,11 @@ class SynthesizeNew implements Callable<Integer> {
         runner.fwriscTestLib = fwriscTestLib;
         runner.cv32e40pTestLib = cv32e40pTestLib;
         runner.cv32e40sTestLib = cv32e40sTestLib;
+        runner.rocketTestLib = rocketTestLib;
         runner.cv32e40sTiming = cv32e40sTiming;
         runner.spikeIsa = spikeIsa;
+        runner.executionModel = executionModel;
+        runner.testcases = testcasePath.toFile();
         runner.processor = processor;
         runner.negativeSignatureThreshold = negativeSignatureThreshold;
         runner.useSkippedEvidence = useSkippedEvidence;
@@ -469,6 +486,10 @@ class SynthesizeNew implements Callable<Integer> {
     }
 
     record OutputPaths(Path contract, Path testcases, Path summary) {
+        OutputPaths {
+            ExecutionMetadata.requireDistinctPaths(contract, ExecutionMetadata.path(contract),
+                    testcases, ExecutionMetadata.path(testcases), summary);
+        }
     }
 }
 
@@ -1052,10 +1073,23 @@ enum ReplayAttackerHarness {
     DARKRISCV_2_TEST,
     FWRISC_TEST,
     CV32E40P_TEST,
-    CV32E40S_TEST
+    CV32E40S_TEST,
+    ROCKET_TEST;
+
+    boolean supportsMisalignedDataAccess() {
+        return switch (this) {
+            case IBEX_TEST, CV32E40P_TEST, CV32E40S_TEST -> true;
+            default -> false;
+        };
+    }
+
+    String unsupportedReason(SpikeAtomClient.SpikeCaseAtoms evidence) {
+        return evidence.requiresMisalignedDataAccess() && !supportsMisalignedDataAccess()
+                ? name() + " configuration requires naturally aligned data accesses" : null;
+    }
 }
 
-@Command(name = "replay_synthesize_spike", description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
+@Command(name = "replay_synthesize_spike", mixinStandardHelpOptions = true, description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
 class ReplaySynthesizeSpike implements Callable<Integer> {
     private static final int MAX_FAILURE_INDICES = 10;
 
@@ -1113,11 +1147,18 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so. Defaults to CONTRACT_CV32E40S_TEST_LIB or the CV32E40S_TEST compilation output.")
     File cv32e40sTestLib;
 
+    @Option(names = "--rocket-test-lib", description = "Rocket attacker library; defaults to CONTRACT_ROCKET_TEST_LIB or the compilation output.")
+    File rocketTestLib;
+
     @Option(names = {"--cv32e40s-data-independent-timing"}, description = "CV32E40S timing protection: ${COMPLETION-CANDIDATES}.", defaultValue = "off")
     CV32E40STestAttackerClient.TimingMode cv32e40sTiming = CV32E40STestAttackerClient.TimingMode.off;
 
     @Option(names = {"-p", "--processor"}, defaultValue = "IBEX_TEST", description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}. Default: ${DEFAULT-VALUE}")
     ReplayAttackerHarness processor;
+
+    @Option(names = "--execution-model", hidden = true, defaultValue = "rv32-v1", converter = ExecutionModel.Converter.class,
+            description = "Shared reference specification (only rv32-v1 is supported).")
+    ExecutionModel executionModel = ExecutionModel.RV32_V1;
 
     @Option(names = {"--spike-isa"}, description = "Spike ISA string", defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
@@ -1142,7 +1183,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Override
     public Integer call() {
         List<TestCase> tests;
+        ExecutionMetadata.requireDistinctPaths(testcases.toPath(), ExecutionMetadata.path(testcases.toPath()),
+                out.toPath(), ExecutionMetadata.path(out.toPath()), txt == null ? null : txt.toPath());
         try {
+            ExecutionMetadata.validate(testcases.toPath(), executionModel, spikeIsa);
             tests = RISCVTestCaseIO.read(testcases.toPath());
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -1155,6 +1199,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
         }
         validateHarnessIsa(processor, isa);
+        validateImportedHarnessIsa(processor, tests);
+        validateExecutionModel(processor, executionModel);
+        System.out.println("Execution model: " + executionModel);
+        if (processor == ReplayAttackerHarness.ROCKET_TEST) System.out.println(RocketTestConfiguration.description());
         if (processor != ReplayAttackerHarness.CV32E40S_TEST
                 && cv32e40sTiming == CV32E40STestAttackerClient.TimingMode.on) {
             throw new IllegalArgumentException("--cv32e40s-data-independent-timing=on requires CV32E40S_TEST.");
@@ -1177,6 +1225,25 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     + failureCount + " issue(s). First issues: " + String.join("; ", failures));
         }
 
+        {
+            List<UnsupportedCase> unsupported = new ArrayList<>();
+            for (int ordinal=0; ordinal<tests.size(); ordinal++) {
+                String reason = processor.unsupportedReason(spikeByOrdinal.get(ordinal));
+                if (reason != null) unsupported.add(new UnsupportedCase(ordinal, tests.get(ordinal).getIndex(), reason));
+            }
+            Path report = out.toPath().resolveSibling(out.getName() + ".unsupported.json");
+            ExecutionMetadata.requireDistinctPaths(report, out.toPath(), ExecutionMetadata.path(out.toPath()),
+                    testcases == null ? null : testcases.toPath(),
+                    testcases == null ? null : ExecutionMetadata.path(testcases.toPath()),
+                    txt == null ? null : txt.toPath());
+            try {
+                Files.writeString(report, new GsonBuilder().setPrettyPrinting().create().toJson(unsupported));
+            } catch (IOException e) { throw new RuntimeException(e); }
+            System.out.printf("Unsupported for %s: %d of %d cases; details: %s%n", processor, unsupported.size(), tests.size(), report);
+            if (!tests.isEmpty() && unsupported.size() == tests.size())
+                throw new IllegalArgumentException("No eligible testcases for " + processor + "; Spike evidence is valid but requires unsupported accesses.");
+        }
+
         List<TestCase> ordinalTests = new ArrayList<>(tests.size());
         for (int i = 0; i < tests.size(); i++) {
             TestCase tc = tests.get(i);
@@ -1191,7 +1258,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         AdaptiveAttackerRunner.Result adaptiveResult = new AdaptiveAttackerRunner(
                 harness.library(), attackerHarnessName, harness.clientFactory(), harness.requireFailureCutoff(),
                 threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets,
-                skipNegativeSubsets, disableAdaptiveSkipping)
+                skipNegativeSubsets, disableAdaptiveSkipping,
+                ordinal -> processor.unsupportedReason(spikeByOrdinal.get(ordinal)) == null)
                 .run(tests, ordinalTests, spikeByOrdinal);
         long attackerTime = System.currentTimeMillis() - attackerStart;
         synthesizeAndWrite(harness.contract(), tests, adaptiveResult, failures, spikeTime,
@@ -1209,7 +1277,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     new IBEXTest(new ILPUpdater(), testCases, allowed, isa, false),
                     ibexTestLib, "CONTRACT_IBEX_TEST_LIB",
                     contractgen.util.RuntimePaths.work("ibex-test/compiled/libcontract_ibex_test_attacker.so").toString(),
-                    IBEXTestAttackerClient::new, true, false);
+                    IBEXTestAttackerClient::new, true, true);
             case CVA6_TEST -> createHarnessSetup(
                     new CVA6Test(new ILPUpdater(), testCases, allowed, isa, false),
                     cva6TestLib, "CONTRACT_CVA6_TEST_LIB",
@@ -1219,12 +1287,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     new Hazard3Test(new ILPUpdater(), testCases, allowed, isa, false),
                     hazard3TestLib, "CONTRACT_HAZARD3_TEST_LIB",
                     contractgen.util.RuntimePaths.work("hazard3-test/compiled/libcontract_hazard3_test_attacker.so").toString(),
-                    Hazard3TestAttackerClient::new, false, false);
+                    Hazard3TestAttackerClient::new, false, true);
             case PROTEUS_TEST -> createHarnessSetup(
                     new ProteusTest(new ILPUpdater(), testCases, allowed, isa, false),
                     proteusTestLib, "CONTRACT_PROTEUS_TEST_LIB",
                     contractgen.util.RuntimePaths.work("proteus-test/compiled/libcontract_proteus_test_attacker.so").toString(),
-                    ProteusTestAttackerClient::new, true, false);
+                    ProteusTestAttackerClient::new, true, true);
             case SODOR_2_TEST -> simpleHarnessSetup(
                     testCases, allowed, "sodor-test", "SODOR_2_TEST",
                     sodor2TestLib, "CONTRACT_SODOR_2_TEST_LIB",
@@ -1241,6 +1309,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     testCases, allowed, "cv32e40p-test", "CV32E40P_TEST",
                     cv32e40pTestLib, "CONTRACT_CV32E40P_TEST_LIB",
                     contractgen.util.RuntimePaths.work("cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so").toString());
+            case ROCKET_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "rocket-test", "ROCKET_TEST",
+                    rocketTestLib, "CONTRACT_ROCKET_TEST_LIB",
+                    contractgen.util.RuntimePaths.work("rocket-test/compiled/libcontract_rocket_test_attacker.so").toString());
             case CV32E40S_TEST -> createHarnessSetup(
                     new SimpleTestMARCH(new ILPUpdater(), testCases, allowed, isa, "cv32e40s-test", "CV32E40S_TEST"),
                     cv32e40sTestLib, "CONTRACT_CV32E40S_TEST_LIB",
@@ -1265,12 +1337,28 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 path -> new SimpleAttackerHarnessClient(path, harnessName), false, true);
     }
 
+    static void validateExecutionModel(ReplayAttackerHarness processor, ExecutionModel model) {
+        java.util.Objects.requireNonNull(model);
+    }
+
     static void validateHarnessIsa(ReplayAttackerHarness processor, Set<RISCV_SUBSET> isa) {
         if ((processor == ReplayAttackerHarness.SODOR_2_TEST
                 || processor == ReplayAttackerHarness.DARKRISCV_2_TEST)
                 && isa.contains(RISCV_SUBSET.M)) {
             throw new IllegalArgumentException(processor + " uses the checked-in RV32I core and does not support M.");
         }
+    }
+
+    static void validateImportedHarnessIsa(ReplayAttackerHarness processor, List<TestCase> tests) {
+        if (processor != ReplayAttackerHarness.SODOR_2_TEST
+                && processor != ReplayAttackerHarness.DARKRISCV_2_TEST) return;
+        for (TestCase test : tests)
+            for (Program side : List.of(test.getProgram1(), test.getProgram2()))
+                if (side instanceof contractgen.riscv.isa.RISCVProgram program)
+                    for (var instruction : program.getProgram())
+                        if (instruction.type().getSubset() == RISCV_SUBSET.M)
+                            throw new IllegalArgumentException(processor + " does not support M; imported testcase "
+                                    + test.getIndex() + " contains " + instruction.type() + ".");
     }
 
     private AttackerHarnessSetup createHarnessSetup(
@@ -1309,6 +1397,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             boolean requireFailureCutoff
     ) {
     }
+
+    private record UnsupportedCase(int ordinal, int caseIndex, String reason) {}
 
     private void synthesizeAndWrite(
             RISCVContract contract,
@@ -1366,6 +1456,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
                 sb.append("\tProcessor: ").append(attackerHarnessName).append("\n");
                 sb.append("\tAtom Source: Spike\n");
+                sb.append("\tExecution Model: ").append(executionModel).append("\n");
+                sb.append("\tSpike ISA: ").append(spikeIsa).append("\n");
+                if (processor == ReplayAttackerHarness.ROCKET_TEST)
+                    sb.append('\t').append(RocketTestConfiguration.description()).append('\n');
                 if (processor == ReplayAttackerHarness.CV32E40S_TEST) {
                     sb.append('\t').append(CV32E40STestAttackerClient.configuration(cv32e40sTiming)).append('\n');
                 }
@@ -1381,6 +1475,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tILP Time: ").append(ilpTime).append(" ms\n");
                 sb.append("\tUnique Signatures: ").append(adaptiveResult.uniqueSignatures()).append("\n");
                 sb.append("\tRTL Executed: ").append(adaptiveResult.stats().executed()).append("\n");
+                sb.append("\tUnsupported For Core: ").append(adaptiveResult.stats().unsupported()).append("\n");
                 sb.append("\tSkipped Positive Signature: ").append(adaptiveResult.stats().skippedPositive()).append("\n");
                 sb.append("\tSkipped Negative Threshold: ").append(adaptiveResult.stats().skippedNegative()).append("\n");
                 sb.append("\tSkipped Positive Superset: ").append(adaptiveResult.stats().skippedPositiveSuperset()).append("\n");
@@ -1403,6 +1498,11 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        try {
+            ExecutionMetadata.write(out.toPath(), executionModel, spikeIsa);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private int validateSpikeResults(List<TestCase> tests, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal, List<String> failures) {
@@ -1422,7 +1522,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     }
 
     private Map<Integer, SpikeAtomClient.SpikeCaseAtoms> runSpikeInChunks(Path spikeLibrary, List<TestCase> tests, Set<RISCV_OBSERVATION_TYPE> allowed) {
-        return new SpikeAtomParallelRunner(spikeLibrary, spikeIsa, allowed, threads).run(tests);
+        return new SpikeAtomParallelRunner(spikeLibrary, spikeIsa, allowed, threads, null, executionModel).run(tests);
     }
 
     private Path resolveSpikeLibrary() {

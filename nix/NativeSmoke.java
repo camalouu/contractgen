@@ -50,7 +50,7 @@ public class NativeSmoke {
             case "cva6_test" -> runClient(new CVA6TestAttackerClient(library(args[0])), identical);
             case "hazard3_test" -> runClient(new Hazard3TestAttackerClient(library(args[0])), identical);
             case "proteus_test" -> runClient(new ProteusTestAttackerClient(library(args[0])), identical);
-            case "sodor_2_test", "darkriscv_2_test", "fwrisc_test", "cv32e40p_test" ->
+            case "rocket_test", "sodor_2_test", "darkriscv_2_test", "fwrisc_test", "cv32e40p_test" ->
                 runClient(new SimpleAttackerHarnessClient(library(args[0]), args[0].toUpperCase()), identical);
             case "cv32e40s_test" -> {
                 var off = new CV32E40STestAttackerClient(library(args[0]), CV32E40STestAttackerClient.TimingMode.off);

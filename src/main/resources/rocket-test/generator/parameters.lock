@@ -1,0 +1,4 @@
+CONTRACT_ROCKET_PARAMS RocketTileParams(RocketCoreParams(32,2,0,false,false,false,false,false,false,false,false,false,false,false,false,false,0,false,0,false,0,0,8,0,true,false,true,0,1,8,Some(0),true,true,false,false,false,0,538447876,Some(MulDivParams(8,1,true,true,1)),None,None,false,false,None,false),Some(ICacheParams(64,4,64,1,32,4,4,0,None,None,None,false,64,2,4)),Some(DCacheParams(64,4,64,None,random,1,32,4,4,None,None,1,0,17,16,1,64,false,false,false,false,None)),Some(BTBParams(28,14,6,6,Some(BHTParams(512,1,8,3)),false)),0,0,None,None,ClockSinkParameters(0.0,5.0,10000.0,200.0,None,None),None,None)
+CONTRACT_ROCKET_CLIENT Core 0 DCache 0 1
+CONTRACT_ROCKET_CLIENT Core 0 DCache MMIO 1 2
+CONTRACT_ROCKET_CLIENT Core 0 ICache 2 3

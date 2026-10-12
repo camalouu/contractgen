@@ -33,6 +33,7 @@ let
     pname = "contract-spike";
     version = "28893f6";
     src = inputs.spike-src;
+    patches = [ ./patches/spike-execution-model.patch ];
     nativeBuildInputs = with pkgs; [ autoconf automake libtool pkg-config ];
     buildInputs = with pkgs; [ boost gmp dtc ];
     preConfigure = ''mkdir build; cd build; configureScript=../configure'';
@@ -44,7 +45,35 @@ let
     env.CFLAGS = "-O2 -fPIC";
     buildFlags = [ "all" "libcontract_spike_atom.so" ];
     enableParallelBuilding = true;
-    postInstall = ''install -Dm755 libcontract_spike_atom.so $out/lib/libcontract_spike_atom.so'';
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      $CXX -std=c++20 -O2 -UNDEBUG -iquote . -I.. -iquote ../spike_main \
+        -iquote ../riscv -iquote ../fesvr -iquote ../disasm -iquote ../softfloat -iquote ../fdt \
+        ${./tests/spike-execution-model.cpp} extension.o libspike_main.a libriscv.a \
+        libdisasm.a libsoftfloat.a libfesvr.a libfdt.a -lpthread -o execution-model-test
+      ./execution-model-test
+      $CXX -std=c++20 -O2 -UNDEBUG -iquote . -I.. -iquote ../spike_main \
+        -iquote ../riscv -iquote ../fesvr -iquote ../disasm -iquote ../softfloat -iquote ../fdt \
+        ${./tests/rtl-reference-agreement.cpp} extension.o libspike_main.a libriscv.a \
+        libdisasm.a libsoftfloat.a libfesvr.a libfdt.a -lpthread -ldl -o contract-spike-rtl-agreement
+      runHook postCheck
+    '';
+    # Strip generated debug sections before copying the installed artifacts.
+    # The normal fixup strips them later, but that duplicates several gigabytes
+    # at install time. Compilation flags and the pinned simulator are unchanged.
+    preInstall = ''
+      for artifact in ./*.a ./*.so spike spike-dasm spike-log-parser xspike \
+          contract-spike-diff execution-model-test contract-spike-rtl-agreement; do
+        if [ -f "$artifact" ]; then
+          ${pkgs.stdenv.cc.bintools}/bin/strip --strip-debug "$artifact"
+        fi
+      done
+    '';
+    postInstall = ''
+      install -Dm755 libcontract_spike_atom.so $out/lib/libcontract_spike_atom.so
+      install -Dm755 contract-spike-rtl-agreement $out/libexec/contract-spike-rtl-agreement
+    '';
   };
   iverilog = pkgs.iverilog.overrideAttrs (old: {
     version = "14.0-devel-5591c2d";

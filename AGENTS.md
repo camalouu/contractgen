@@ -85,6 +85,12 @@ Use heavier commands only when needed and only after checking tool availability:
 - Legacy configured run from `nix develop`:
   `mvn -q exec:java -Dexec.mainClass=contractgen.ContractGen`
 
+### Remote VM for expensive experiments
+
+- A configured VM is available as `vm1` over SSH when the VPN is connected.
+- Prefer running expensive or long-running experiments on that VM rather than the local workstation. Check VPN/SSH availability first and keep experiment outputs under `~/experiments` on the VM unless a task specifies otherwise.
+- Local experiment folders may contain retrieved summaries and analysis without containing the full VM datasets; state clearly which raw artifacts remain remote.
+
 ## Environment Assumptions
 
 The supported environment is x86-64 Linux with Nix and flakes enabled. The

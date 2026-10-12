@@ -14,7 +14,7 @@ module control(
         retire_count_o = 32'b0;
     end
 
-    always @(negedge clk_i) begin
+    always @(posedge clk_i) begin
         if (!reset_i && paired_retire_i) begin
             retire_count_o = retire_count_o + 1;
             if (retire_count_o >= max_instr_count)

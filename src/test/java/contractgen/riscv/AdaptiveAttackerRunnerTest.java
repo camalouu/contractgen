@@ -28,6 +28,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Tests cutoff filtering independently of a native attacker implementation. */
 class AdaptiveAttackerRunnerTest {
+    @Test
+    void unsupportedCasesAreExcludedBeforeSignaturesAndNeverBecomeNegativeEvidence() {
+        var tests = List.of(test(20), test(21));
+        var evidence = Map.of(0, timedAtoms(), 1, withOrdinal(timedAtoms(),1,21));
+        for (boolean relations : new boolean[]{false,true}) {
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            var runner = new AdaptiveAttackerRunner(Path.of("unused"),"ROCKET_TEST", ignored ->
+                    (test,maxCycles) -> { calls.incrementAndGet(); assertEquals(21,test.getIndex());
+                        return SIMULATION_RESULT.SUCCESS; }, false,2,1,true,relations,relations,false,
+                    ordinal -> ordinal == 1);
+            var result = runner.run(tests,tests,evidence);
+            assertEquals(1,calls.get());
+            assertEquals(1,result.stats().unsupported());
+            assertEquals(1,result.stats().executed());
+            assertEquals(0,result.stats().failureCount());
+            assertNull(result.results()[0]);
+            assertFalse(result.results()[1].isAdversaryDistinguishable());
+            assertEquals(21,result.results()[1].getIndex());
+        }
+    }
     private static final RISCVObservation EARLY =
             new RISCVObservation(RISCV_TYPE.ADDI, RISCV_OBSERVATION_TYPE.IMM);
     private static final RISCVObservation LATE =

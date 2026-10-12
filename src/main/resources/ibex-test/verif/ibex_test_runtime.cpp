@@ -1,3 +1,4 @@
+#include "contract_reference_trace.hpp"
 #include "ibex_test_runtime.hpp"
 
 #include "Vtop.h"
@@ -132,14 +133,14 @@ IbexTestRunResult contract_ibex_run_case(const IbexTestCaseImage& test_case, int
         return result;
     }
 
-    int current_guess = std::max(initial.first_failure_fetch_1, initial.first_failure_fetch_2);
+    int current_guess = test_case.max_instr_count;
     while (current_guess >= initial.first_failure_retire) {
         const SingleRunResult candidate = run_once(test_case, current_guess, max_cycles);
         if (candidate.status != IbexTestStatus::Fail) break;
         current_guess--;
     }
 
-    // Match the historical IBEX.extractCTX flow: after finding the first bound
+    // Preserve attacker prefix minimization at explicit retirement bounds: after finding the first bound
     // that does not fail, rerun once at the preceding (smallest failing) bound.
     const int minimized_bound = current_guess + 1;
     const SingleRunResult minimized = run_once(test_case, minimized_bound, max_cycles);
@@ -181,4 +182,13 @@ void contract_ibex_load_legacy_dat_files(IbexTestCaseImage& test_case, const std
     if (count && std::getline(count, line) && !line.empty()) {
         test_case.max_instr_count = static_cast<int>(std::strtoull(line.c_str(), nullptr, 16));
     }
+}
+
+extern "C" int contract_architectural_trace_v1(const uint32_t* words, int count, int max_cycles,
+                                                  uint32_t* pcs, uint32_t* registers) {
+    return contract_reference_trace::collect(words,count,max_cycles,pcs,registers,[&]() {
+        IbexTestCaseImage test; test.max_instr_count=count;
+        std::copy(words,words+2048,test.program1.begin()); test.program2=test.program1;
+        return static_cast<int>(contract_ibex_run_case(test, max_cycles).status);
+    },0);
 }

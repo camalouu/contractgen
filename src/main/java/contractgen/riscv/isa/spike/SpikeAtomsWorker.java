@@ -22,10 +22,14 @@ public class SpikeAtomsWorker implements Callable<Integer> {
     @Option(names = {"--spike-isa"}, defaultValue = "RV32IM_Zicclsm")
     String spikeIsa;
 
+    @Option(names = "--execution-model", hidden = true, defaultValue = "rv32-v1", converter = ExecutionModel.Converter.class,
+            description = "Shared reference specification (only rv32-v1 is supported).")
+    ExecutionModel executionModel = ExecutionModel.RV32_V1;
+
     @Override
     public Integer call() {
         try {
-            SpikeAtomClient spike = new SpikeAtomClient(spikeLib.toPath());
+            SpikeAtomClient spike = new SpikeAtomClient(spikeLib.toPath(), executionModel);
             String json = spike.runAllJson(Files.readString(testcases.toPath()), spikeIsa);
             Files.writeString(output.toPath(), json);
             return 0;

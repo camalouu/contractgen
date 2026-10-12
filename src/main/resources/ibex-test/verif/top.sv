@@ -18,6 +18,12 @@ module top (
     (* gclk *) reg clk;
 `endif
 
+    import "DPI-C" function void contract_reference_retire(input int core_id,
+        input int unsigned pc, input int unsigned instruction, input int rd, input int unsigned value, input int trap);
+    logic [31:0] trace_pc_1, trace_pc_2, trace_data_1, trace_data_2;
+    logic [4:0] trace_rd_1, trace_rd_2;
+    logic trace_trap_1, trace_trap_2;
+
     logic clock;
     initial clock = 0;
     always @(posedge clk) begin
@@ -174,7 +180,7 @@ module top (
         .rvfi_valid             (rvfi_valid_1_o),
         .rvfi_order             (rvfi_order_1_o),
         .rvfi_insn              (rvfi_insn_1_o),
-        .rvfi_trap              (),
+        .rvfi_trap              (trace_trap_1),
         .rvfi_halt              (),
         .rvfi_intr              (),
         .rvfi_mode              (),
@@ -185,9 +191,9 @@ module top (
         .rvfi_rs1_rdata         (),
         .rvfi_rs2_rdata         (),
         .rvfi_rs3_rdata         (),
-        .rvfi_rd_addr           (),
-        .rvfi_rd_wdata          (),
-        .rvfi_pc_rdata          (),
+        .rvfi_rd_addr           (trace_rd_1),
+        .rvfi_rd_wdata          (trace_data_1),
+        .rvfi_pc_rdata          (trace_pc_1),
         .rvfi_pc_wdata          (),
         .rvfi_mem_addr          (),
         .rvfi_mem_rmask         (),
@@ -202,7 +208,7 @@ module top (
         .core_sleep_o           (),
 
         .fetch_o                (fetch_1),
-        .retire_o               (retire_1)
+        .retire_o               ()
     );
 
     ibex_core #(
@@ -248,7 +254,7 @@ module top (
         .rvfi_valid             (rvfi_valid_2_o),
         .rvfi_order             (rvfi_order_2_o),
         .rvfi_insn              (rvfi_insn_2_o),
-        .rvfi_trap              (),
+        .rvfi_trap              (trace_trap_2),
         .rvfi_halt              (),
         .rvfi_intr              (),
         .rvfi_mode              (),
@@ -259,9 +265,9 @@ module top (
         .rvfi_rs1_rdata         (),
         .rvfi_rs2_rdata         (),
         .rvfi_rs3_rdata         (),
-        .rvfi_rd_addr           (),
-        .rvfi_rd_wdata          (),
-        .rvfi_pc_rdata          (),
+        .rvfi_rd_addr           (trace_rd_2),
+        .rvfi_rd_wdata          (trace_data_2),
+        .rvfi_pc_rdata          (trace_pc_2),
         .rvfi_pc_wdata          (),
         .rvfi_mem_addr          (),
         .rvfi_mem_rmask         (),
@@ -276,7 +282,7 @@ module top (
         .core_sleep_o           (),
 
         .fetch_o                (fetch_2),
-        .retire_o               (retire_2)
+        .retire_o               ()
     );
 
     atk atk (
@@ -285,6 +291,9 @@ module top (
         .atk_observation_2_i    (clock_2),
         .atk_equiv_o            (atk_equiv)
     );
+
+    assign retire_1 = rvfi_valid_1_o;
+    assign retire_2 = rvfi_valid_2_o;
 
     clk_sync clk_sync (
         .clk_i                  (clock),
@@ -316,4 +325,6 @@ module top (
         end
     end
 
+    always @(negedge clock_1) if (rvfi_valid_1_o) contract_reference_retire(1,trace_pc_1,rvfi_insn_1_o,trace_rd_1,trace_data_1,trace_trap_1);
+    always @(negedge clock_2) if (rvfi_valid_2_o) contract_reference_retire(2,trace_pc_2,rvfi_insn_2_o,trace_rd_2,trace_data_2,trace_trap_2);
 endmodule

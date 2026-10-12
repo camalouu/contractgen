@@ -6,6 +6,7 @@ module cv32e40s_test_top import cv32e40s_pkg::*; (
     output logic [31:0] retire_count_o,
     output logic [31:0] error_code_o, debug_pc_o, debug_cpuctrl_o
 );
+    import "DPI-C" function void contract_reference_retire(input int core_id, input int unsigned pc, input int unsigned instruction, input int rd, input int unsigned value, input int trap);
     logic [1:0] core_clk, retire, boot, instr_req, instr_gnt, instr_rvalid;
     logic [1:0] data_req, data_gnt, data_rvalid, data_we, major_alert, minor_alert, trap;
     logic [1:0][31:0] instr_addr, instr_rdata, data_addr, data_wdata, data_rdata, retire_pc;
@@ -48,12 +49,11 @@ module cv32e40s_test_top import cv32e40s_pkg::*; (
             .alert_major_o(major_alert[n]), .alert_minor_o(minor_alert[n]),
             .debug_pc_valid_o(retire[n]), .debug_pc_o(retire_pc[n])
         );
+        always @(posedge core_clk[n]) if (rst_ni && retire[n])
+            contract_reference_retire(n+1,retire_pc[n],core.wb_stage_i.ex_wb_pipe_i.instr.bus_resp.rdata,core.rf_we_wb ? core.rf_waddr_wb : 0,core.rf_wdata_wb,trap[n]);
         assign cpuctrl[n] = core.cs_registers_i.cpuctrl_q;
 
-        // The current Spike synthetic halfword model and generated workload use
-        // word-aligned halfwords/words. Reject broader replay inputs explicitly.
-        assign unsupported_alignment[n] = core.load_store_unit_i.trans_valid &&
-            core.load_store_unit_i.trans.size != 0 && core.load_store_unit_i.trans.addr[1:0] != 0;
+        assign unsupported_alignment[n] = 1'b0;
         assign trap[n] = core.ctrl_fsm.pc_set &&
             (core.ctrl_fsm.pc_mux inside {PC_TRAP_EXC, PC_TRAP_IRQ, PC_TRAP_DBD,
                                           PC_TRAP_DBE, PC_TRAP_NMI, PC_TRAP_CLICV});
@@ -84,7 +84,7 @@ module cv32e40s_test_top import cv32e40s_pkg::*; (
         else if (measuring && !finished_o && core_clk[0] != core_clk[1]) atk_equiv_o <= 0;
     end
 
-    always @(negedge clk or negedge rst_ni) begin
+    always @(posedge clk or negedge rst_ni) begin
         if (!rst_ni) begin
             boot_count = 0;
             measuring = 0;

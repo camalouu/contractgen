@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
 
 public final class AdaptiveAttackerRunner {
     private static final int MAX_FAILURES = 10;
@@ -34,6 +35,7 @@ public final class AdaptiveAttackerRunner {
     private final boolean skipNegativeSubsets;
     private final boolean disableAdaptiveSkipping;
     private final boolean requireFailureCutoff;
+    private final IntPredicate eligible;
 
     /**
      * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
@@ -50,6 +52,17 @@ public final class AdaptiveAttackerRunner {
             boolean skipNegativeSubsets,
             boolean disableAdaptiveSkipping
     ) {
+        this(attackerLibrary,harnessName,attackerFactory,requireFailureCutoff,threads,
+                negativeSignatureThreshold,useSkippedEvidence,skipPositiveSupersets,skipNegativeSubsets,
+                disableAdaptiveSkipping, ordinal -> true);
+    }
+
+    public AdaptiveAttackerRunner(Path attackerLibrary, String harnessName,
+            Function<Path, AttackerHarnessClient> attackerFactory, boolean requireFailureCutoff,
+            int threads, int negativeSignatureThreshold, boolean useSkippedEvidence,
+            boolean skipPositiveSupersets, boolean skipNegativeSubsets, boolean disableAdaptiveSkipping,
+            IntPredicate eligible) {
+        this.eligible = java.util.Objects.requireNonNull(eligible);
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("negativeSignatureThreshold must be >= 0.");
         }
@@ -70,13 +83,14 @@ public final class AdaptiveAttackerRunner {
             List<TestCase> ordinalTests,
             Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal
     ) {
-        List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal);
+        List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal, eligible);
         System.out.printf("Running %s adaptive attacker labels for %d cases across %d exact signatures.%n", harnessName, tests.size(), signatureGroups.size());
         if (!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets)) {
             return runWithSignatureRelations(tests, ordinalTests, spikeByOrdinal, signatureGroups);
         }
         RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
         Stats stats = new Stats();
+        stats.unsupported.set(tests.size() - signatureGroups.stream().mapToInt(g -> g.ordinals().size()).sum());
         List<String> failures = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger groupCursor = new AtomicInteger();
         AtomicReference<Throwable> runnerFailure = new AtomicReference<>();
@@ -123,6 +137,7 @@ public final class AdaptiveAttackerRunner {
     ) {
         RISCVTestResult[] mergedResults = new RISCVTestResult[tests.size()];
         Stats stats = new Stats();
+        stats.unsupported.set(tests.size() - signatureGroups.stream().mapToInt(g -> g.ordinals().size()).sum());
         List<String> failures = new ArrayList<>();
         List<AtomSignature> knownPositive = new ArrayList<>();
         List<AtomSignature> knownNegative = new ArrayList<>();
@@ -353,9 +368,11 @@ public final class AdaptiveAttackerRunner {
         return Collections.unmodifiableSet(filtered);
     }
 
-    private static List<SignatureGroup> groupBySignature(int total, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal) {
+    private static List<SignatureGroup> groupBySignature(int total, Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal,
+                                                        IntPredicate eligible) {
         Map<AtomSignature, List<Integer>> grouped = new LinkedHashMap<>();
         for (int ordinal = 0; ordinal < total; ordinal++) {
+            if (!eligible.test(ordinal)) continue;
             SpikeAtomClient.SpikeCaseAtoms spikeCase = spikeByOrdinal.get(ordinal);
             AtomSignature signature = new AtomSignature(spikeCase.atoms());
             grouped.computeIfAbsent(signature, ignored -> new ArrayList<>()).add(ordinal);
@@ -422,6 +439,9 @@ public final class AdaptiveAttackerRunner {
         private final AtomicInteger skippedNegativeSubset = new AtomicInteger();
         private final AtomicInteger relationConflicts = new AtomicInteger();
         private final AtomicInteger failureCount = new AtomicInteger();
+        private final AtomicInteger unsupported = new AtomicInteger();
+
+        public int unsupported() { return unsupported.get(); }
 
         public int executed() {
             return executed.get();

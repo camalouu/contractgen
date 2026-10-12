@@ -1,17 +1,18 @@
 { pkgs, resources, tools }:
 let
   specs = {
-    ibex = { dir = "ibex-test"; deps = []; atom = "ibex_test"; };
-    cva6 = { dir = "cva6-test"; deps = [ "cva6" ]; atom = "cva6_test"; };
-    hazard3 = { dir = "hazard3-test"; deps = [ "hazard3" ]; atom = "hazard3_test"; };
-    proteus = { dir = "proteus-test"; deps = []; atom = "proteus_test"; };
+    rocket = { dir = "rocket-test"; deps = []; atom = "rocket_test"; };
+    ibex = { dir = "ibex-test"; deps = [ "attacker-test-common" ]; atom = "ibex_test"; };
+    cva6 = { dir = "cva6-test"; deps = [ "cva6" "attacker-test-common" ]; atom = "cva6_test"; };
+    hazard3 = { dir = "hazard3-test"; deps = [ "hazard3" "attacker-test-common" ]; atom = "hazard3_test"; };
+    proteus = { dir = "proteus-test"; deps = [ "attacker-test-common" ]; atom = "proteus_test"; };
     sodor-2 = { dir = "sodor-test"; deps = [ "sodor-2" "attacker-test-common" ]; atom = "sodor_2_test"; };
     darkriscv-2 = { dir = "darkriscv-test"; deps = [ "darkriscv-2" "attacker-test-common" ]; atom = "darkriscv_2_test"; };
     fwrisc = { dir = "fwrisc-test"; deps = [ "attacker-test-common" ]; atom = "fwrisc_test"; };
     cv32e40p = { dir = "cv32e40p-test"; deps = [ "attacker-test-common" ]; atom = "cv32e40p_test"; };
     cv32e40s = { dir = "cv32e40s-test"; deps = [ "attacker-test-common" ]; atom = "cv32e40s_test"; };
   };
-  build = name: spec: pkgs.stdenv.mkDerivation {
+  build = name: spec: pkgs.stdenv.mkDerivation ({
     pname = "contractgen-attacker-${name}";
     version = "1";
     src = resources.assemble ([ spec.dir ] ++ spec.deps);
@@ -33,5 +34,16 @@ let
       cp build/libcontract_${spec.atom}_attacker.so $out/lib/
     '';
     passthru = { inherit (spec) atom; };
-  };
+  } // pkgs.lib.optionalAttrs (name == "rocket") {
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      $CXX -std=c++17 -O2 -UNDEBUG -pthread -Ibuild/obj_dir \
+        -I"$(verilator -getenv VERILATOR_ROOT)/include" -Irocket-test/verif \
+        rocket-test/tests/timing_test.cpp build/libcontract_rocket_test_attacker.so \
+        -Wl,-rpath,"$PWD/build" -o independent-timing-test
+      ./independent-timing-test
+      runHook postCheck
+    '';
+  });
 in pkgs.lib.mapAttrs build specs

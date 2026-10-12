@@ -23,6 +23,13 @@ CORE_ROOT="$OUT_DIR/core-patched"
 mkdir -p "$CORE_ROOT"
 cp -a "$CORE_SOURCE_ROOT/." "$CORE_ROOT/"
 patch --batch --forward --directory="$CORE_ROOT" -p1 < "$CORE_PATCH"
+python3 - "$CORE_ROOT/rtl/fwrisc_exec.sv" <<'PYBOOT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]);s=p.read_text();old="pc <= 'h8000_0000;"
+assert s.count(old)==1, "Pinned FWRISC reset-vector layout changed"
+p.write_text(s.replace(old,"pc <= 'h0000_0080;"))
+PYBOOT
 
 RTL_SOURCES=(
   "$CORE_ROOT"/rtl/fwrisc_regfile.sv "$CORE_ROOT"/rtl/fwrisc_mul_div_shift.sv
@@ -41,7 +48,7 @@ verilator --cc --top-module fwrisc_test_top -I"$CORE_ROOT/rtl" \
   -Wno-fatal -Wno-WIDTH -Wno-LATCH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE \
   --threads-dpi none -O3 --Mdir "$OUT_DIR/obj_dir_shared" \
   --exe "$SOURCE_DIR/verif/fwrisc_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
-  -CFLAGS "-std=c++17 -O3 -fPIC -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
+  -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
   -o libcontract_fwrisc_test_attacker.so "${RTL_SOURCES[@]}" "${VERIF_SOURCES[@]}"
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vfwrisc_test_top.mk libcontract_fwrisc_test_attacker.so
 cp "$OUT_DIR/obj_dir_shared/libcontract_fwrisc_test_attacker.so" "$OUT_DIR/libcontract_fwrisc_test_attacker.so"

@@ -78,6 +78,8 @@ copy_required verif/instr_mem.sv "$LR_VERIF_OUT_DIR"/instr_mem.sv
 copy_required verif/tc_clk_gating.sv "$LR_VERIF_OUT_DIR"/tc_clk_gating.sv
 copy_required verif/top.sv "$LR_VERIF_OUT_DIR"/top.sv
 
+cp "${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif/contract_reference_trace.hpp" "$LR_VERIF_OUT_DIR/contract_reference_trace.hpp"
+
 cd "$LR_VERIF_OUT_DIR"/ || exit
 
 # shellcheck disable=SC2035
