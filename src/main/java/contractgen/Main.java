@@ -66,6 +66,65 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/** Shared by direct and replay Spike workflows. The old grouped scheduler remains the default. */
+class AdaptiveSchedulingOptions {
+    @Option(names = "--scheduling-policy", defaultValue = "grouped", converter = PolicyConverter.class,
+            description = "Query scheduling: grouped, input-order, breadth-once, breadth-every-round.")
+    AdaptiveAttackerRunner.Policy policy = AdaptiveAttackerRunner.Policy.GROUPED;
+
+    @Option(names = "--breadth-continuation", defaultValue = "input", converter = ContinuationConverter.class,
+            description = "After a breadth-once sweep: input or random (preserves within-signature order).")
+    AdaptiveAttackerRunner.Continuation continuation = AdaptiveAttackerRunner.Continuation.INPUT;
+
+    @Option(names = "--scheduling-seed", defaultValue = "0", description = "Seed for random breadth-once continuation; independent of testcase generation.")
+    long seed;
+
+    @Option(names = "--query-log", description = "Optional JSONL of successful RTL result completions, elapsed nanoseconds and filtered evidence.")
+    File queryLog;
+
+    static class PolicyConverter implements CommandLine.ITypeConverter<AdaptiveAttackerRunner.Policy> {
+        @Override public AdaptiveAttackerRunner.Policy convert(String value) {
+            return AdaptiveAttackerRunner.Policy.valueOf(value.toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
+        }
+    }
+    static class ContinuationConverter implements CommandLine.ITypeConverter<AdaptiveAttackerRunner.Continuation> {
+        @Override public AdaptiveAttackerRunner.Continuation convert(String value) {
+            return AdaptiveAttackerRunner.Continuation.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+        }
+    }
+    AdaptiveAttackerRunner.Scheduling configuration() { return new AdaptiveAttackerRunner.Scheduling(policy, continuation, seed); }
+    void validate(boolean relations) { AdaptiveAttackerRunner.validateScheduling(configuration(), relations); }
+    void validatePaths(Path output, Path input, File summary) {
+        if (queryLog == null) return;
+        ExecutionMetadata.requireDistinctPaths(queryLog.toPath(), output, ExecutionMetadata.path(output),
+                input, input == null ? null : ExecutionMetadata.path(input),
+                summary == null ? null : summary.toPath(),
+                output.resolveSibling(output.getFileName() + ".unsupported.json"));
+    }
+    QueryLog openLog() throws IOException { return new QueryLog(queryLog); }
+
+    static final class QueryLog implements AutoCloseable {
+        private final java.io.BufferedWriter writer;
+        private final com.google.gson.Gson gson = new GsonBuilder().create();
+        QueryLog(File path) throws IOException {
+            if (path == null) writer = null;
+            else {
+                Path absolute = path.toPath().toAbsolutePath();
+                Files.createDirectories(absolute.getParent());
+                writer = Files.newBufferedWriter(absolute);
+            }
+        }
+        java.util.function.Consumer<AdaptiveAttackerRunner.Execution> observer() { return writer == null ? null : this::write; }
+        private void write(AdaptiveAttackerRunner.Execution execution) {
+            try {
+                writer.write(gson.toJson(execution));
+                writer.newLine();
+            } catch (IOException e) { throw new java.io.UncheckedIOException(e); }
+        }
+        @Override public void close() throws IOException { if (writer != null) writer.close(); }
+    }
+}
+
 @Command(name = "main", mixinStandardHelpOptions = true, subcommands = {Synthesize.class, SynthesizeNew.class, ExportTests.class, CompactTests.class, ReplaySynthesize.class, ReplaySynthesizeSpike.class, CompareSpikeRvfiAtoms.class, CompareIbexTestAttacker.class, CompareCva6TestAttacker.class, CompareContracts.class, SpikeAtomsWorker.class, PracticalBenchmark.class, ILP.class, Analyze.class, Update.class, Evaluate.class, Falsify.class, PrintAtoms.class, UnsafeInstructions.class, Stats.class}, description = "Main application command.")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
@@ -251,6 +310,8 @@ class Synthesize implements Callable<Integer> {
 
 @Command(name = "synth_new", mixinStandardHelpOptions = true, description = "Synthesize using Spike for contract atoms and an attacker-only RTL harness for attacker labels.")
 class SynthesizeNew implements Callable<Integer> {
+    @CommandLine.Mixin
+    AdaptiveSchedulingOptions scheduling = new AdaptiveSchedulingOptions();
     @Option(names = {"-p", "--processor"}, required = true, description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}")
     ReplayAttackerHarness processor;
 
@@ -366,10 +427,12 @@ class SynthesizeNew implements Callable<Integer> {
     @Override
     public Integer call() {
         ReplaySynthesizeSpike.validateExecutionModel(processor, executionModel);
+        scheduling.validate(!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets));
         OutputPaths outputs = resolveOutputs(outputDir, out, testcasesOut, txt);
         out = outputs.contract().toFile();
         testcasesOut = outputs.testcases().toFile();
         txt = outputs.summary() == null ? null : outputs.summary().toFile();
+        scheduling.validatePaths(out.toPath(), resolveTestcasesOutput(out, testcasesOut), txt);
         if (outputDir != null) {
             try {
                 Files.createDirectories(outputDir.toPath());
@@ -440,6 +503,7 @@ class SynthesizeNew implements Callable<Integer> {
         runner.skipPositiveSupersets = skipPositiveSupersets;
         runner.skipNegativeSubsets = skipNegativeSubsets;
         runner.disableAdaptiveSkipping = disableAdaptiveSkipping;
+        runner.scheduling = scheduling;
 
         String source = "generated seed=" + seed
                 + ", count=" + number
@@ -1091,6 +1155,8 @@ enum ReplayAttackerHarness {
 
 @Command(name = "replay_synthesize_spike", mixinStandardHelpOptions = true, description = "Run replay synthesis using Spike for atom distinguishability and an attacker-only RTL harness for attacker distinguishability.")
 class ReplaySynthesizeSpike implements Callable<Integer> {
+    @CommandLine.Mixin
+    AdaptiveSchedulingOptions scheduling = new AdaptiveSchedulingOptions();
     private static final int MAX_FAILURE_INDICES = 10;
 
     @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
@@ -1195,6 +1261,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     }
 
     Integer runTests(List<TestCase> tests, String sourceDescription) {
+        scheduling.validate(!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets));
+        scheduling.validatePaths(out.toPath(), testcases == null ? null : testcases.toPath(), txt);
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
         }
@@ -1255,12 +1323,18 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         AttackerHarnessSetup harness = setupAttackerHarness(ordinalTests, allowed);
         long attackerResolveTime = System.currentTimeMillis() - attackerResolveStart;
         long attackerStart = System.currentTimeMillis();
-        AdaptiveAttackerRunner.Result adaptiveResult = new AdaptiveAttackerRunner(
+        AdaptiveAttackerRunner.Result adaptiveResult;
+        try (AdaptiveSchedulingOptions.QueryLog log = scheduling.openLog()) {
+            adaptiveResult = new AdaptiveAttackerRunner(
                 harness.library(), attackerHarnessName, harness.clientFactory(), harness.requireFailureCutoff(),
                 threads, negativeSignatureThreshold, useSkippedEvidence, skipPositiveSupersets,
                 skipNegativeSubsets, disableAdaptiveSkipping,
-                ordinal -> processor.unsupportedReason(spikeByOrdinal.get(ordinal)) == null)
+                ordinal -> processor.unsupportedReason(spikeByOrdinal.get(ordinal)) == null,
+                scheduling.configuration(), log.observer())
                 .run(tests, ordinalTests, spikeByOrdinal);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot write query log", e);
+        }
         long attackerTime = System.currentTimeMillis() - attackerStart;
         synthesizeAndWrite(harness.contract(), tests, adaptiveResult, failures, spikeTime,
                 attackerResolveTime, attackerTime, start, attackerHarnessName);
@@ -1435,6 +1509,8 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
         long timeElapsed = System.currentTimeMillis() - start;
         System.out.println("\nGeneration time: " + timeElapsed);
+        System.out.printf("Scheduling: policy=%s, continuation=%s, seed=%d, queryLog=%s%n",
+                scheduling.policy, scheduling.continuation, scheduling.seed, scheduling.queryLog);
         System.out.printf("Adaptive signatures: unique=%d, rtlExecuted=%d, skippedPositive=%d, skippedNegative=%d, skippedPositiveSuperset=%d, skippedNegativeSubset=%d, relationConflicts=%d, useSkippedEvidence=%s, negativeThreshold=%d, skipPositiveSupersets=%s, skipNegativeSubsets=%s, disableAdaptiveSkipping=%s%n",
                 adaptiveResult.uniqueSignatures(),
                 adaptiveResult.stats().executed(),
@@ -1467,6 +1543,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("\tTemplate: ").append(template).append("\n");
                 sb.append("\tCount: ").append(tests.size()).append("\n");
                 sb.append("\tThreads: ").append(threads).append("\n");
+                sb.append("\tScheduling Policy: ").append(scheduling.policy).append("\n");
+                sb.append("\tBreadth Continuation: ").append(scheduling.continuation).append("\n");
+                sb.append("\tScheduling Seed: ").append(scheduling.seed).append("\n");
+                sb.append("\tQuery Log: ").append(scheduling.queryLog).append("\n");
                 sb.append("\tSource: ").append(sourceDescription).append("\n");
                 sb.append("\tSkip ILP: ").append(skipILP).append("\n");
                 sb.append("\tSpike Time: ").append(spikeTime).append(" ms\n");

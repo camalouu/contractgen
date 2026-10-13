@@ -29,6 +29,167 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Tests cutoff filtering independently of a native attacker implementation. */
 class AdaptiveAttackerRunnerTest {
     @Test
+    void serialPoliciesPreserveSelectionButChangeQueryOrder() {
+        int[] signatures = {0,0,1,1,1,2,2,2,0,1,2,0};
+        var tests = new java.util.ArrayList<TestCase>();
+        var atoms = new java.util.HashMap<Integer,SpikeAtomClient.SpikeCaseAtoms>();
+        for (int i=0;i<signatures.length;i++) {
+            tests.add(test(i));
+            atoms.put(i,new SpikeAtomClient.SpikeCaseAtoms(i,i,
+                    Set.of(new RISCVObservation(RISCV_TYPE.values()[signatures[i]],RISCV_OBSERVATION_TYPE.IMM)),null));
+        }
+        for (var policy : AdaptiveAttackerRunner.Policy.values()) {
+            var observed = new java.util.ArrayList<AdaptiveAttackerRunner.Execution>();
+            var result = new AdaptiveAttackerRunner(Path.of("unused"),"mock", ignored ->
+                    (t,cycles) -> t.getIndex()==1 ? SIMULATION_RESULT.FAIL : SIMULATION_RESULT.SUCCESS,
+                    false,1,3,true,false,false,false,ordinal -> true,
+                    new AdaptiveAttackerRunner.Scheduling(policy,AdaptiveAttackerRunner.Continuation.INPUT,0),observed::add)
+                    .run(tests,tests,atoms);
+            List<Integer> expected = switch (policy) {
+                case GROUPED, INPUT_ORDER -> List.of(0,1,2,3,4,5,6,7);
+                case BREADTH_ONCE -> List.of(0,2,5,1,3,4,6,7);
+                case BREADTH_EVERY_ROUND -> List.of(0,2,5,1,3,6,4,7);
+            };
+            assertEquals(expected,observed.stream().map(AdaptiveAttackerRunner.Execution::ordinal).toList());
+            assertEquals(8,result.stats().executed());
+            assertEquals(2,result.stats().skippedPositive());
+            assertEquals(2,result.stats().skippedNegative());
+            for (var r:result.results()) assertTrue(r != null);
+            assertTrue(result.results()[8].isAdversaryDistinguishable());
+            assertFalse(result.results()[9].isAdversaryDistinguishable());
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(10)
+    void parallelPoliciesHaveOneInflightCasePerSignatureAndRespectSweepBarriers() {
+        int groups=30, size=10;
+        var tests=new java.util.ArrayList<TestCase>();
+        var atoms=new java.util.HashMap<Integer,SpikeAtomClient.SpikeCaseAtoms>();
+        for(int i=0;i<groups*size;i++) {
+            tests.add(test(i));
+            atoms.put(i,new SpikeAtomClient.SpikeCaseAtoms(i,i,
+                    Set.of(new RISCVObservation(RISCV_TYPE.values()[i%groups],RISCV_OBSERVATION_TYPE.IMM)),null));
+        }
+        for (var policy:AdaptiveAttackerRunner.Policy.values()) {
+            var active=java.util.concurrent.ConcurrentHashMap.<Integer>newKeySet();
+            var completedFirst=new java.util.concurrent.atomic.AtomicInteger();
+            var concurrency=new java.util.concurrent.atomic.AtomicInteger();
+            var maximum=new java.util.concurrent.atomic.AtomicInteger();
+            var events=new java.util.ArrayList<AdaptiveAttackerRunner.Execution>();
+            var result=new AdaptiveAttackerRunner(Path.of("unused"),"mock",ignored -> (t,cycles) -> {
+                int ordinal=t.getIndex(),group=ordinal%groups;
+                assertTrue(active.add(group),"Two concurrent cases in a signature");
+                maximum.accumulateAndGet(concurrency.incrementAndGet(),Math::max);
+                if (policy==AdaptiveAttackerRunner.Policy.BREADTH_ONCE || policy==AdaptiveAttackerRunner.Policy.BREADTH_EVERY_ROUND)
+                    if(ordinal>=groups)assertEquals(groups,completedFirst.get(),"Continuation started before first sweep completed");
+                try { Thread.sleep(2); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                if(ordinal<groups)completedFirst.incrementAndGet();
+                concurrency.decrementAndGet();active.remove(group);
+                return group%3==0 && ordinal/groups==1 ? SIMULATION_RESULT.FAIL : SIMULATION_RESULT.SUCCESS;
+            },false,4,3,false,false,false,false,ordinal -> true,
+                    new AdaptiveAttackerRunner.Scheduling(policy,
+                            policy==AdaptiveAttackerRunner.Policy.BREADTH_ONCE?AdaptiveAttackerRunner.Continuation.RANDOM:AdaptiveAttackerRunner.Continuation.INPUT,42),events::add)
+                    .run(tests,tests,atoms);
+            assertTrue(maximum.get()>1,"RTL work did not run concurrently");
+            assertEquals(80,result.stats().executed());
+            assertEquals(0,result.stats().failureCount());
+            assertEquals(80,events.size());
+            int[] previous=new int[groups];java.util.Arrays.fill(previous,-1);
+            long elapsed=0;
+            for(int i=0;i<events.size();i++) {
+                var event=events.get(i);int group=event.ordinal()%groups;
+                assertEquals(i+1,event.sequence());
+                assertTrue(event.elapsedNanos()>=elapsed);elapsed=event.elapsedNanos();
+                assertTrue(event.ordinal()>previous[group]);previous[group]=event.ordinal();
+            }
+            for(int i=0;i<groups*size;i++) {
+                boolean queried=i/groups < (i%groups%3==0?2:3);
+                assertEquals(queried,result.results()[i]!=null,"Selected IDs differ across schedulers");
+            }
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(10)
+    void schedulerFailureWakesOtherWorkers() {
+        var tests=List.of(test(0),test(1));
+        var atoms=Map.of(0,new SpikeAtomClient.SpikeCaseAtoms(0,0,Set.of(EARLY),null),
+                1,new SpikeAtomClient.SpikeCaseAtoms(1,1,Set.of(LATE),null));
+        for(var policy:List.of(AdaptiveAttackerRunner.Policy.BREADTH_ONCE,AdaptiveAttackerRunner.Policy.BREADTH_EVERY_ROUND)) {
+            var runner=new AdaptiveAttackerRunner(Path.of("unused"),"mock",ignored -> (t,cycles) -> {
+                if(t.getIndex()==0)throw new IllegalStateException("native failure");
+                return SIMULATION_RESULT.SUCCESS;
+            },false,4,8,false,false,false,false,ordinal -> true,
+                    new AdaptiveAttackerRunner.Scheduling(policy,AdaptiveAttackerRunner.Continuation.INPUT,0),null);
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,()->runner.run(tests,tests,atoms));
+        }
+    }
+
+    @Test
+    void randomContinuationIsRepeatableWithOneWorker() {
+        var tests=new java.util.ArrayList<TestCase>();
+        var atoms=new java.util.HashMap<Integer,SpikeAtomClient.SpikeCaseAtoms>();
+        for(int i=0;i<60;i++) {
+            tests.add(test(i));
+            atoms.put(i,new SpikeAtomClient.SpikeCaseAtoms(i,i,
+                    Set.of(new RISCVObservation(RISCV_TYPE.values()[i%6],RISCV_OBSERVATION_TYPE.IMM)),null));
+        }
+        var sequences=new java.util.ArrayList<List<Integer>>();
+        for(int repeat=0;repeat<2;repeat++) {
+            var events=new java.util.ArrayList<AdaptiveAttackerRunner.Execution>();
+            var result=new AdaptiveAttackerRunner(Path.of("unused"),"mock",ignored ->(t,cycles)->SIMULATION_RESULT.SUCCESS,
+                    false,1,8,false,false,false,false,ordinal -> true,
+                    new AdaptiveAttackerRunner.Scheduling(AdaptiveAttackerRunner.Policy.BREADTH_ONCE,
+                            AdaptiveAttackerRunner.Continuation.RANDOM,42),events::add).run(tests,tests,atoms);
+            assertEquals(48,result.stats().executed());
+            sequences.add(events.stream().map(AdaptiveAttackerRunner.Execution::ordinal).toList());
+        }
+        assertEquals(sequences.get(0),sequences.get(1));
+        assertEquals(List.of(0,1,2,3,4,5),sequences.get(0).subList(0,6));
+    }
+
+    @Test
+    void newPoliciesRejectOrderDependentRelationSkipping() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,()->
+                new AdaptiveAttackerRunner(Path.of("unused"),"mock",ignored -> (t,cycles)->SIMULATION_RESULT.SUCCESS,
+                        false,4,8,false,true,false,false,ordinal -> true,
+                        new AdaptiveAttackerRunner.Scheduling(AdaptiveAttackerRunner.Policy.BREADTH_ONCE,
+                                AdaptiveAttackerRunner.Continuation.INPUT,0),null));
+    }
+
+    @Test
+    void scheduledPoliciesRespectEligibilityInvalidResultsAndDisabledSkipping() {
+        var tests = new java.util.ArrayList<TestCase>();
+        var atoms = new java.util.HashMap<Integer,SpikeAtomClient.SpikeCaseAtoms>();
+        for (int i=0;i<8;i++) {
+            tests.add(test(i));
+            atoms.put(i,new SpikeAtomClient.SpikeCaseAtoms(i,i,
+                    Set.of(new RISCVObservation(RISCV_TYPE.values()[i<6?i%2:2],RISCV_OBSERVATION_TYPE.IMM)),null));
+        }
+        for (var policy:AdaptiveAttackerRunner.Policy.values()) for (boolean disabled:new boolean[]{false,true}) {
+            var events=new java.util.ArrayList<AdaptiveAttackerRunner.Execution>();
+            var result=new AdaptiveAttackerRunner(Path.of("unused"),"mock",ignored -> (t,cycles) ->
+                    t.getIndex()==0?SIMULATION_RESULT.ERROR:t.getIndex()%2==0?SIMULATION_RESULT.FAIL:SIMULATION_RESULT.SUCCESS,
+                    false,4,2,true,false,false,disabled,ordinal -> ordinal<6,
+                    new AdaptiveAttackerRunner.Scheduling(policy,AdaptiveAttackerRunner.Continuation.INPUT,0),events::add)
+                    .run(tests,tests,atoms);
+            assertEquals(2,result.uniqueSignatures());
+            assertEquals(2,result.stats().unsupported());
+            assertEquals(1,result.stats().failureCount());
+            assertEquals(disabled?6:4,result.stats().executed());
+            assertEquals(disabled?5:3,events.size());
+            assertEquals(disabled?0:1,result.stats().skippedPositive());
+            assertEquals(disabled?0:1,result.stats().skippedNegative());
+            assertNull(result.results()[0]);
+            assertNull(result.results()[6]);
+            assertNull(result.results()[7]);
+            assertTrue(result.results()[4].isAdversaryDistinguishable());
+            assertFalse(result.results()[5].isAdversaryDistinguishable());
+        }
+    }
+
+    @Test
     void unsupportedCasesAreExcludedBeforeSignaturesAndNeverBecomeNegativeEvidence() {
         var tests = List.of(test(20), test(21));
         var evidence = Map.of(0, timedAtoms(), 1, withOrdinal(timedAtoms(),1,21));

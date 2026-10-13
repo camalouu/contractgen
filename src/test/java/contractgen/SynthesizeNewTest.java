@@ -13,6 +13,27 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SynthesizeNewTest {
     @Test
+    void schedulingOptionsAreSharedByDirectAndReplayWorkflows() {
+        var direct=new SynthesizeNew();
+        new picocli.CommandLine(direct).parseArgs("-p","IBEX_TEST","-i","BASE,M","-c","BASE","-n","10","-t","4",
+                "-s","35","-o","unused.json","--scheduling-policy","breadth-once",
+                "--breadth-continuation","random","--scheduling-seed","42","--query-log","queries.jsonl");
+        assertEquals(contractgen.riscv.AdaptiveAttackerRunner.Policy.BREADTH_ONCE,direct.scheduling.policy);
+        assertEquals(contractgen.riscv.AdaptiveAttackerRunner.Continuation.RANDOM,direct.scheduling.continuation);
+        assertEquals(42,direct.scheduling.seed);
+        assertEquals(35,direct.seed);
+        assertEquals(new File("queries.jsonl"),direct.scheduling.queryLog);
+        var replay=new ReplaySynthesizeSpike();
+        new picocli.CommandLine(replay).parseArgs("-i","BASE,M","-c","BASE","-t","4",
+                "-e","cases.json","-o","unused.json","--scheduling-policy","breadth-every-round");
+        assertEquals(contractgen.riscv.AdaptiveAttackerRunner.Policy.BREADTH_EVERY_ROUND,replay.scheduling.policy);
+        assertEquals(contractgen.riscv.AdaptiveAttackerRunner.Policy.GROUPED,new SynthesizeNew().scheduling.policy);
+        assertThrows(IllegalArgumentException.class,()->direct.scheduling.validate(true));
+        replay.scheduling.queryLog=new File("cases.json");
+        assertThrows(IllegalArgumentException.class,()->replay.scheduling.validatePaths(Path.of("unused.json"),Path.of("cases.json"),null));
+    }
+
+    @Test
     void executionModelIsExplicitAndValidatedSeparatelyFromProcessor() {
         var direct = new SynthesizeNew();
         new picocli.CommandLine(direct).parseArgs("-p", "ROCKET_TEST", "-i", "BASE,M",
