@@ -65,6 +65,7 @@ in {
     run_workflow PROTEUS_TEST BASE,M off
     run_workflow SODOR_2_TEST BASE off
     run_workflow DARKRISCV_2_TEST BASE off
+    run_workflow PICCOLO_TEST BASE,M off
     run_workflow FWRISC_TEST BASE,M off
     run_workflow CV32E40P_TEST BASE,M off
     run_workflow CV32E40S_TEST BASE,M off

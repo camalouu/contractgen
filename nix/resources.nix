@@ -9,6 +9,7 @@ let
     "cva6/cva6" = inputs.cva6-src;
     "fwrisc-test/core" = inputs.fwrisc-src;
     "cv32e40p-test/core" = inputs.cv32e40p-src;
+    "piccolo-test/core" = inputs.piccolo-src;
     "cv32e40s-test/core" = inputs.cv32e40s-src;
   };
   localSource = name: builtins.path {
@@ -38,5 +39,5 @@ let
   );
   names = [ "ibex" "ibex-test" "cva6" "cva6-test" "hazard3" "hazard3-test"
     "proteus-test" "sodor-2" "sodor-5" "sodor-test" "darkriscv-2" "darkriscv-3"
-    "darkriscv-test" "fwrisc-test" "cv32e40p-test" "cv32e40s-test" "rocket-test" "attacker-test-common" "simple" ];
+    "darkriscv-test" "fwrisc-test" "cv32e40p-test" "cv32e40s-test" "rocket-test" "piccolo-test" "attacker-test-common" "simple" ];
 in { inherit assemble; all = assemble names; }

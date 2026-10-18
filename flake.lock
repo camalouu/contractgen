@@ -158,6 +158,23 @@
         "type": "github"
       }
     },
+    "piccolo-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1642981300,
+        "narHash": "sha256-L67oB9XDx8mLdRS+6MKKJI6qO3g6ytPNHguyZHvqFq4=",
+        "owner": "bluespec",
+        "repo": "Piccolo",
+        "rev": "8a80b63af7e0036833836c91fc95f18f74c5fafa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "bluespec",
+        "repo": "Piccolo",
+        "rev": "8a80b63af7e0036833836c91fc95f18f74c5fafa",
+        "type": "github"
+      }
+    },
     "proteus-src": {
       "flake": false,
       "locked": {
@@ -186,6 +203,7 @@
         "ibex-src": "ibex-src",
         "iverilog-src": "iverilog-src",
         "nixpkgs": "nixpkgs",
+        "piccolo-src": "piccolo-src",
         "proteus-src": "proteus-src",
         "spike-src": "spike-src",
         "synlig-abc-src": "synlig-abc-src",

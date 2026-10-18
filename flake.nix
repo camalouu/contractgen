@@ -18,6 +18,7 @@
     synlig-yosys-src = { url = "git+https://github.com/YosysHQ/yosys?rev=8b2a0010216f9a15c09bd2f4dc63691949b126df&submodules=1"; flake = false; };
     synlig-abc-src = { url = "github:YosysHQ/abc/1de4eaf"; flake = false; };
     synlig-plugins-src = { url = "git+https://github.com/chipsalliance/yosys-f4pga-plugins?rev=73038124b0a2943fe9d591c43f46292bcbf82105&submodules=1"; flake = false; };
+    piccolo-src = { url = "github:bluespec/Piccolo/8a80b63af7e0036833836c91fc95f18f74c5fafa"; flake = false; };
     proteus-src = { url = "github:proteus-core/proteus/0f489fc5cfddabca93ae01880374385fcb649660"; flake = false; };
   };
   outputs = inputs@{ self, nixpkgs, ... }:

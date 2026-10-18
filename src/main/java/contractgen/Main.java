@@ -396,6 +396,9 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so.")
     File cv32e40sTestLib;
 
+    @Option(names = "--piccolo-test-lib", description = "Piccolo library; defaults to CONTRACT_PICCOLO_TEST_LIB or the compilation output.")
+    File piccoloTestLib;
+
     @Option(names = "--rocket-test-lib", description = "Rocket attacker library; defaults to CONTRACT_ROCKET_TEST_LIB or the compilation output.")
     File rocketTestLib;
 
@@ -492,6 +495,7 @@ class SynthesizeNew implements Callable<Integer> {
         runner.fwriscTestLib = fwriscTestLib;
         runner.cv32e40pTestLib = cv32e40pTestLib;
         runner.cv32e40sTestLib = cv32e40sTestLib;
+        runner.piccoloTestLib = piccoloTestLib;
         runner.rocketTestLib = rocketTestLib;
         runner.cv32e40sTiming = cv32e40sTiming;
         runner.spikeIsa = spikeIsa;
@@ -1138,6 +1142,7 @@ enum ReplayAttackerHarness {
     FWRISC_TEST,
     CV32E40P_TEST,
     CV32E40S_TEST,
+    PICCOLO_TEST,
     ROCKET_TEST;
 
     boolean supportsMisalignedDataAccess() {
@@ -1212,6 +1217,9 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     @Option(names = {"--cv32e40s-test-lib"}, description = "Path to libcontract_cv32e40s_test_attacker.so. Defaults to CONTRACT_CV32E40S_TEST_LIB or the CV32E40S_TEST compilation output.")
     File cv32e40sTestLib;
+
+    @Option(names = "--piccolo-test-lib", description = "Piccolo library; defaults to CONTRACT_PICCOLO_TEST_LIB or the compilation output.")
+    File piccoloTestLib;
 
     @Option(names = "--rocket-test-lib", description = "Rocket attacker library; defaults to CONTRACT_ROCKET_TEST_LIB or the compilation output.")
     File rocketTestLib;
@@ -1383,6 +1391,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     testCases, allowed, "cv32e40p-test", "CV32E40P_TEST",
                     cv32e40pTestLib, "CONTRACT_CV32E40P_TEST_LIB",
                     contractgen.util.RuntimePaths.work("cv32e40p-test/compiled/libcontract_cv32e40p_test_attacker.so").toString());
+            case PICCOLO_TEST -> simpleHarnessSetup(
+                    testCases, allowed, "piccolo-test", "PICCOLO_TEST",
+                    piccoloTestLib, "CONTRACT_PICCOLO_TEST_LIB",
+                    contractgen.util.RuntimePaths.work("piccolo-test/compiled/libcontract_piccolo_test_attacker.so").toString());
             case ROCKET_TEST -> simpleHarnessSetup(
                     testCases, allowed, "rocket-test", "ROCKET_TEST",
                     rocketTestLib, "CONTRACT_ROCKET_TEST_LIB",

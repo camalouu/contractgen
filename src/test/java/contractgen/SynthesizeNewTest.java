@@ -51,6 +51,23 @@ class SynthesizeNewTest {
     }
 
     @Test
+    void piccoloUsesSharedOptionsAndAlignedDataCapability() {
+        var direct = new SynthesizeNew();
+        new picocli.CommandLine(direct).parseArgs("-p", "PICCOLO_TEST", "-i", "BASE,M",
+                "-c", "BASE", "-n", "1", "-t", "1", "-s", "35", "-o", "unused.json",
+                "--piccolo-test-lib", "/tmp/piccolo.so", "--disable-adaptive-skipping");
+        assertEquals(ReplayAttackerHarness.PICCOLO_TEST, direct.processor);
+        assertEquals(new File("/tmp/piccolo.so"), direct.piccoloTestLib);
+        var replay = new ReplaySynthesizeSpike();
+        new picocli.CommandLine(replay).parseArgs("-p", "PICCOLO_TEST", "-i", "BASE,M",
+                "-c", "BASE", "-t", "1", "-e", "unused-tests.json", "-o", "unused.json",
+                "--piccolo-test-lib", "/tmp/replay-piccolo.so");
+        assertEquals(new File("/tmp/replay-piccolo.so"), replay.piccoloTestLib);
+        ReplaySynthesizeSpike.validateHarnessIsa(replay.processor, replay.isa);
+        assertEquals(false, replay.processor.supportsMisalignedDataAccess());
+    }
+
+    @Test
     void parsesCv32e40sOptionsInBothNewWorkflowCommands() {
         var direct = new SynthesizeNew();
         new picocli.CommandLine(direct).parseArgs("-p", "CV32E40S_TEST", "-i", "BASE,M",

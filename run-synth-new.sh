@@ -8,9 +8,9 @@ set -euo pipefail
 platform="CVA6_TEST"
 # platform="IBEX_TEST"
 # platform="ROCKET_TEST"
-count=1000
+count=100000
 threads=8
-seed=43
+seed=56
 isa="BASE,M"
 contract="BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE"
 
@@ -25,6 +25,6 @@ output_dir="results/${platform_lower}-${count}-seed${seed}"
   -t "$threads" \
   -s "$seed" \
   --output-dir "$output_dir" \
-  --random-suffix \
   --disable-adaptive-skipping 
+  # --random-suffix \
   # --cv32e40s-data-independent-timing=on \

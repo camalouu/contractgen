@@ -1,6 +1,7 @@
 { pkgs, resources, tools }:
 let
   specs = {
+    piccolo = { dir = "piccolo-test"; deps = [ "attacker-test-common" ]; atom = "piccolo_test"; };
     rocket = { dir = "rocket-test"; deps = []; atom = "rocket_test"; };
     ibex = { dir = "ibex-test"; deps = [ "attacker-test-common" ]; atom = "ibex_test"; };
     cva6 = { dir = "cva6-test"; deps = [ "cva6" "attacker-test-common" ]; atom = "cva6_test"; };
@@ -34,6 +35,26 @@ let
       cp build/libcontract_${spec.atom}_attacker.so $out/lib/
     '';
     passthru = { inherit (spec) atom; };
+  } // pkgs.lib.optionalAttrs (name == "cva6") {
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      $CXX -std=c++17 -O2 -UNDEBUG -I"$(verilator -getenv VERILATOR_ROOT)/include" \
+        cva6-test/tests/wide_constant_test.cpp -o wide-constant-test
+      ./wide-constant-test
+      python3 cva6-test/tests/timing.py build/libcontract_cva6_test_attacker.so
+      runHook postCheck
+    '';
+  } // pkgs.lib.optionalAttrs (name == "piccolo") {
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      $CXX -std=c++17 -O2 -UNDEBUG -Ipiccolo-test/verif \
+        piccolo-test/tests/axi_memory_test.cpp -o axi-memory-test
+      ./axi-memory-test
+      python3 piccolo-test/tests/runtime.py build/libcontract_piccolo_test_attacker.so
+      runHook postCheck
+    '';
   } // pkgs.lib.optionalAttrs (name == "rocket") {
     doCheck = true;
     checkPhase = ''

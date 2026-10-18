@@ -162,11 +162,13 @@ VERILATOR_COMMON=(
 )
 
 verilator "${VERILATOR_COMMON[@]}" --Mdir obj_dir --exe "$LR_VERIF_OUT_DIR"/sim_main.cpp "$LR_VERIF_OUT_DIR"/cva6_test_runtime.cpp -LDFLAGS "-lpthread" &> "$LR_VERIF_OUT_DIR"/compile.log
+python3 "$SOURCE_DIR/fix-wide-constants.py" obj_dir
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir/ -f Vtop.mk Vtop
 cp obj_dir/Vtop cva6-test
 
 verilator "${VERILATOR_COMMON[@]}" --Mdir obj_dir_shared --exe "$LR_VERIF_OUT_DIR"/cva6_test_runtime.cpp "$LR_VERIF_OUT_DIR"/cva6_test_shared.cpp \
   -CFLAGS "-fPIC -I/include -I/share/verilator/include/vltstd -std=c++17 -O3 -DVL_DEBUG" -LDFLAGS "-shared -fPIC -lpthread" -o libcontract_cva6_test_attacker.so &> "$LR_VERIF_OUT_DIR"/compile-shared.log
+python3 "$SOURCE_DIR/fix-wide-constants.py" obj_dir_shared
 make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared/ -f Vtop.mk libcontract_cva6_test_attacker.so
 cp obj_dir_shared/libcontract_cva6_test_attacker.so libcontract_cva6_test_attacker.so
 test -f libcontract_cva6_test_attacker.so
