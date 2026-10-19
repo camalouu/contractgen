@@ -282,6 +282,64 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @param instruction The instruction to be altered.
      * @return A pair of sequences of instructions.
      */
+    /** Keep register values fixed while changing a RAW or WAW dependency. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> dependencyPair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        boolean waw = observation.name().startsWith("WAW_");
+        Integer input = waw ? instruction.rd()
+                : observation.name().startsWith("RAW_RS1_") ? instruction.rs1() : instruction.rs2();
+        if (input == null || input == 0) return null;
+        // Isolate WAW: do not also introduce a read-after-write dependency.
+        if (waw && (Objects.equals(input, instruction.rs1())
+                || (instruction.hasArchitecturalRS2() && Objects.equals(input, instruction.rs2())))) return null;
+        // Use a real, otherwise unused destination on the independent side.
+        List<Integer> unused = new ArrayList<>();
+        for (int register = 1; unused.size() < 3; register++) {
+            if (!Objects.equals(register, instruction.rs1()) && !Objects.equals(register, instruction.rs2())
+                    && !Objects.equals(register, instruction.rd())) unused.add(register);
+        }
+        int scratch = unused.get(0), source1 = unused.get(1), source2 = unused.get(2);
+        int distance = Character.digit(observation.name().charAt(observation.name().length() - 1), 10);
+        // Select only enabled instructions, including the shared setup requirements.
+        if (!types.contains(RISCV_TYPE.ADDI)) return null;
+        List<RISCV_TYPE> producers = Stream.of(RISCV_TYPE.ADD, RISCV_TYPE.LW, RISCV_TYPE.MUL, RISCV_TYPE.DIV)
+                .filter(types::contains)
+                .filter(type -> type != RISCV_TYPE.LW || types.contains(RISCV_TYPE.SW))
+                .toList();
+        if (producers.isEmpty()) return null;
+        RISCV_TYPE producer = producers.get(r.nextInt(producers.size()));
+        int value = switch (producer) {
+            case ADD -> 45;
+            case LW -> 0;
+            case MUL -> 126;
+            case DIV -> 14;
+            default -> throw new IllegalStateException("Unknown dependency producer");
+        };
+        List<RISCVInstruction> setup = new ArrayList<>();
+        setup.add(RISCVInstruction.ADDI(source1, 0, 42));
+        setup.add(RISCVInstruction.ADDI(source2, 0, 3));
+        setup.add(RISCVInstruction.ADDI(input, 0, value));
+        setup.add(RISCVInstruction.ADDI(scratch, 0, value));
+        if (producer == RISCV_TYPE.LW) setup.add(RISCVInstruction.SW(0, 0, 0));
+        setup.addAll(nopSequence(4));
+        List<RISCVInstruction> left = new ArrayList<>(setup);
+        List<RISCVInstruction> right = new ArrayList<>(setup);
+        for (int destination : new int[]{input, scratch}) {
+            RISCVInstruction write = switch (producer) {
+                case ADD -> RISCVInstruction.ADD(destination, source1, source2);
+                case LW -> RISCVInstruction.LW(destination, 0, 0);
+                case MUL -> RISCVInstruction.MUL(destination, source1, source2);
+                case DIV -> RISCVInstruction.DIV(destination, source1, source2);
+                default -> throw new IllegalStateException("Unknown dependency producer");
+            };
+            List<RISCVInstruction> program = destination == input ? left : right;
+            program.add(write);
+            program.addAll(nopSequence(distance - 1));
+            program.add(instruction);
+        }
+        return new Pair<>(left, right);
+    }
+
     private Pair<List<RISCVInstruction>, List<RISCVInstruction>> alterObservation(RISCV_OBSERVATION_TYPE type, RISCVInstruction instruction) {
         return switch (type) {
             case FORMAT, OPCODE, FUNCT7, FUNCT3 -> null; //new Pair<>(List.of(instruction), randomSequence(1));
@@ -377,95 +435,10 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             case IS_ALIGNED -> null;
             case IS_HALF_ALIGNED -> null;
             case NEW_PC -> null;
-            case RAW_RS1_2, RAW_RS1_3, RAW_RS1_4, RAW_RS2_2, RAW_RS2_3, RAW_RS2_4, WAW_2, WAW_3, WAW_4 -> null;
-            case RAW_RS1_1 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs1(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                yield new Pair<>(List.of(add1, instruction), List.of(add2, instruction));
-            }
-/*            case RAW_RS1_2 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs1(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, instruction), List.of(add2, nop, instruction));
-            }
-            case RAW_RS1_3 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs1(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, instruction), List.of(add2, nop, nop, instruction));
-            }
-            case RAW_RS1_4 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs1(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, nop, instruction), List.of(add2, nop, nop, nop, instruction));
-            }
-
- */
-            case RAW_RS2_1 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs2(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                yield new Pair<>(List.of(add1, instruction), List.of(add2, instruction));
-            }
-            /*
-            case RAW_RS2_2 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs2(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, instruction), List.of(add2, nop, instruction));
-            }
-            case RAW_RS2_3 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs2(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, instruction), List.of(add2, nop, nop, instruction));
-            }
-            case RAW_RS2_4 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rs2(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, nop, instruction), List.of(add2, nop, nop, nop, instruction));
-            }
-             */
-            case WAW_1 -> {
-                if (instruction.rd() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rd(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                yield new Pair<>(List.of(add1, instruction), List.of(add2, instruction));
-            }
-            /*
-            case WAW_2 -> {
-                if (instruction.rd() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rd(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, instruction), List.of(add2, nop, instruction));
-            }
-            case WAW_3 -> {
-                if (instruction.rd() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rd(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, instruction), List.of(add2, nop, nop, instruction));
-            }
-            case WAW_4 -> {
-                if (instruction.rd() == null) yield null;
-                RISCVInstruction add1 = RISCVInstruction.ADD(instruction.rd(), 0, 0);
-                RISCVInstruction add2 = RISCVInstruction.ADD(0, 0, 0);
-                RISCVInstruction nop = RISCVInstruction.NOP();
-                yield new Pair<>(List.of(add1, nop, nop, nop, instruction), List.of(add2, nop, nop, nop, instruction));
-            }
-
-             */
+            case RAW_RS1_1, RAW_RS1_2, RAW_RS1_3, RAW_RS1_4,
+                    RAW_RS2_1, RAW_RS2_2, RAW_RS2_3, RAW_RS2_4 ->
+                    dependencyPair(type, instruction);
+            case WAW_1, WAW_2, WAW_3, WAW_4 -> dependencyPair(type, instruction);
             case REG_RS1_ZERO, REG_RS1_LOG2, REG_RS2_ZERO, REG_RS2_LOG2, REG_RD_ZERO, REG_RD_LOG2 -> null;
         };
     }
