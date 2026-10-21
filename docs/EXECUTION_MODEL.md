@@ -66,6 +66,34 @@ are not an architectural RS2 source and cannot produce RAW_RS2 atoms. Structural
 RS2 retains its historical five-bit-field convention. These relations describe
 architectural context; selecting an atom does not identify an internal RTL hazard.
 
+The `BASE` template also includes four boolean observations extracted by Spike:
+
+- `RD_IS_ZERO`, `RS1_IS_ZERO`, and `RS2_IS_ZERO` test whether the encoded
+  architectural register is **x0**, independently of the register's value.
+  `RS2_IS_ZERO` excludes shift-immediate instructions: their shamt bits are not
+  a register source. The existing `REG_*_ZERO` observations still test values.
+- `IMM_IS_NEGATIVE` tests the sign of the decoded immediate: bit 11 for I/S,
+  bit 12 for branches, bit 20 for JAL, and bit 31 of the shifted U-type value.
+  Zero is nonnegative; shift amounts have no signed-immediate observation.
+  This works for both signed Java inputs and unsigned stored bit patterns.
+
+Each predicate is applicable only to instructions that have the corresponding
+field. Spike records differences with first-retirement metadata, using the same
+instruction-type comparison rules as existing structural observations. A load
+to x0 and a load of zero into x5 differ in `RD_IS_ZERO`, while their
+`REG_RD_ZERO` values are both true.
+
+Targeted generation compares x0 with a nonzero destination, compares x0 sources
+with an ordinary register prefilled with zero, and flips only the immediate's
+sign bit for signed-immediate tests. These targets use the existing generation
+loops; fixed testcase budgets are redistributed across the expanded template.
+
+New native responses advertise `structural_predicates_version: 1`. Java rejects
+an older Spike library when these predicates are requested. Rebuild Spike and
+re-extract saved programs to add this evidence to old results; existing RTL
+labels can be retained. The legacy RVFI extractor is unchanged, and exporting a
+selected new predicate to its Verilog contract monitor is explicitly unsupported.
+
 For `rv32-v1`, MEM_ADDR is the RV32 effective address, MEM_W_DATA is the source
 register value, and MEM_R_DATA contains the accessed bytes in their RV32 word
 lanes `(address + byte_offset) mod 4`, with other lanes zero. Misaligned accesses

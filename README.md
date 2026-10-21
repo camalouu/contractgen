@@ -44,11 +44,64 @@ nix run . -- synth_new \
   --output-dir results/ibex-test-100-seed35
 ```
 
+Rocket is available in the Spike-based workflow: add `--processor ROCKET_TEST` instead of the
+Ibex processor option. All Spike-backed workflows use the shared `rv32-v1` reference. Historical experiments require the archived reference and harness environment. See [the shared execution model](docs/EXECUTION_MODEL.md) and
+[Rocket build/replay instructions](docs/ROCKET_TEST_HARNESS.md).
+
+Piccolo is available as `PICCOLO_TEST` with its supplied RV32 caches and
+pre-generated Verilog. See the [Piccolo harness guide](docs/PICCOLO_TEST_HARNESS.md)
+for its configuration, memory model, build commands and synthesis/replay usage.
+
 The packaged launcher uses cached Spike and attacker libraries. It writes
 temporary compilation and simulation files below `./results/.work` by default;
 set `CONTRACTGEN_WORK_ROOT` to use another writable location. Explicit CLI
 library paths such as `--spike-lib` and `--ibex-test-lib` take precedence over
 the corresponding `CONTRACT_*_LIB` environment variables.
+
+### Adaptive query scheduling
+
+Both `synth_new` and `replay_synthesize_spike` accept
+`--scheduling-policy grouped|input-order|breadth-once|breadth-every-round`.
+`grouped` preserves the existing default. `breadth-once` executes the first case
+of each eligible Spike signature before continuing in input order; add
+`--breadth-continuation random --scheduling-seed 42` for seeded random
+interleaving. `breadth-every-round` executes one case per active signature in
+each round. Testcase order inside each signature is preserved by every policy.
+
+For example, append these options to the synthesis invocation above:
+
+```sh
+--scheduling-policy breadth-once --breadth-continuation random \
+--scheduling-seed 42 --negative-signature-threshold 8 \
+--query-log results/ibex-test-100-seed35/queries.jsonl
+```
+
+N8 stops a signature after its first attacker-positive result or eight valid
+attacker-negative results; shorter groups are exhausted normally. Workers run
+different signatures concurrently, with at most one case in flight per
+signature. Breadth-once has one sweep barrier; breadth-every-round has a
+barrier per round. Random continuation shuffles remaining candidate group
+slots, not whole groups or their internal testcase order. Its seed is separate
+from `-s`, the generation seed. Parallel completion order can still vary.
+Input and random continuations dispatch the next ready signature by its
+candidate-plan priority; a busy signature waits for its result while other
+signatures can advance. One worker reproduces the serial plan, whereas multiple
+workers can change both dispatch interleaving and completion prefixes.
+
+`--query-log` optionally records successful RTL results with filtered evidence,
+completion sequence, original index and elapsed attacker-stage nanoseconds.
+It excludes inferred skipped evidence. This supports analysis of real parallel
+completion prefixes; checkpoint ILP time is not included in those timestamps.
+The CLI still synthesizes after collection. Query logs are generated artifacts
+and must use a path distinct from testcase, contract, metadata and summary files.
+Signature subset/superset skipping is supported only with grouped scheduling;
+other policies reject that combination rather than silently changing its semantics.
+
+The [local scheduling experiment](experiments/local-scheduling-20261013/README.md)
+compares these policies with one and four RTL workers on five cores and records
+sensitivity, missed leaks, precision and collection time on independent holdouts.
+
+### Development
 
 Use the development shell for Java, harness, legacy simulator, or formal work:
 

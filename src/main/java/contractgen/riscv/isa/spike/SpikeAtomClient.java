@@ -39,7 +39,15 @@ public final class SpikeAtomClient {
     }
 
     public List<SpikeCaseAtoms> runAll(String testcasesJson, String isa, Set<RISCV_OBSERVATION_TYPE> allowed) {
-        return parseResponse(runAllJson(testcasesJson, isa), allowed);
+        String json = runAllJson(testcasesJson, isa);
+        if (allowed.stream().anyMatch(RISCV_OBSERVATION_TYPE::isStructuralPredicate)) {
+            var response = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            if (!response.has("structural_predicates_version")
+                    || response.get("structural_predicates_version").getAsInt() != 1) {
+                throw new IllegalStateException("Spike library lacks register-index/ immediate-sign predicates; rebuild with nix build .#spike.");
+            }
+        }
+        return parseResponse(json, allowed);
     }
 
     public String runAllJson(String testcasesJson, String isa) {

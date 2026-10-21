@@ -71,4 +71,22 @@ class SpikeAtomClientTest {
         assertEquals(Set.of(atom), result.atoms());
         assertEquals(33, result.firstRetire(atom).orElseThrow());
     }
+
+    @Test
+    void parsesAndFiltersStructuralPredicates() {
+        String json = """
+                {"cases":[{"ordinal":0,"case_index":9,"atoms":[
+                  {"type":"LW","observation":"RD_IS_ZERO","first_retire":33},
+                  {"type":"ADD","observation":"RS1_IS_ZERO","first_retire":34},
+                  {"type":"ADD","observation":"RS2_IS_ZERO","first_retire":34},
+                  {"type":"BEQ","observation":"IMM_IS_NEGATIVE","first_retire":35}
+                ]}]}
+                """;
+        var all = SpikeAtomClient.parseResponse(json, EnumSet.allOf(RISCV_OBSERVATION_TYPE.class)).get(0);
+        assertEquals(4, all.atoms().size());
+        var sign = new RISCVObservation(RISCV_TYPE.BEQ, RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE);
+        assertEquals(35, all.firstRetire(sign).orElseThrow());
+        var filtered = SpikeAtomClient.parseResponse(json, Set.of(RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE)).get(0);
+        assertEquals(Set.of(sign), filtered.atoms());
+    }
 }

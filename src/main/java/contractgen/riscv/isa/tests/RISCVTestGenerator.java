@@ -419,6 +419,26 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
     private Pair<List<RISCVInstruction>, List<RISCVInstruction>> alterObservation(RISCV_OBSERVATION_TYPE type, RISCVInstruction instruction) {
         return switch (type) {
             case FORMAT, OPCODE, FUNCT7, FUNCT3 -> null; //new Pair<>(List.of(instruction), randomSequence(1));
+            case RD_IS_ZERO -> {
+                if (instruction.rd() == null) yield null;
+                yield new Pair<>(List.of(instruction.cloneAlteringRD(0)),
+                        List.of(instruction.cloneAlteringRD(r.nextInt(1, NUMBER_REGISTERS))));
+            }
+            case RS1_IS_ZERO, RS2_IS_ZERO -> zeroSourcePair(type, instruction);
+            case IMM_IS_NEGATIVE -> {
+                if (!RISCVInstruction.hasIMM(instruction.type())) yield null;
+                int signBit = switch (instruction.type().getFormat()) {
+                    case ITYPE, STYPE -> 11;
+                    case BTYPE -> 12;
+                    case JTYPE -> 20;
+                    case UTYPE -> 31;
+                    case RTYPE -> throw new IllegalStateException("R-type has no signed immediate");
+                };
+                long positive = instruction.imm() & ((1L << signBit) - 1);
+                if (RISCVInstruction.isCONTROL(instruction.type())) positive &= ~3L;
+                yield new Pair<>(List.of(instruction.cloneAlteringIMM(positive)),
+                        List.of(instruction.cloneAlteringIMM(positive | (1L << signBit))));
+            }
             case RD -> {
                 if (instruction.rd() == null) yield null;
                 RISCVInstruction ins1 = instruction.cloneAlteringRD(r.nextInt(1, NUMBER_REGISTERS));
@@ -517,6 +537,28 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             case WAW_1, WAW_2, WAW_3, WAW_4 -> dependencyPair(type, instruction);
             case REG_RS1_ZERO, REG_RS1_LOG2, REG_RS2_ZERO, REG_RS2_LOG2, REG_RD_ZERO, REG_RD_LOG2 -> null;
         };
+    }
+
+    /** Read x0 versus an ordinary register holding zero, with the same operand value. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> zeroSourcePair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        boolean rs1 = observation == RISCV_OBSERVATION_TYPE.RS1_IS_ZERO;
+        if (rs1 ? instruction.rs1() == null : !instruction.hasArchitecturalRS2()) return null;
+        if (!types.contains(RISCV_TYPE.ADDI)) return null;
+        int register;
+        do { register = r.nextInt(1, NUMBER_REGISTERS); }
+        while (Objects.equals(register, instruction.rd()) || Objects.equals(register, instruction.rs1())
+                || Objects.equals(register, instruction.rs2()));
+        if (rs1 && (RISCVInstruction.isMEM(instruction.type()) || instruction.type() == RISCV_TYPE.JALR)) {
+            instruction = instruction.cloneAlteringIMM(instruction.imm() & ~3L);
+        }
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        left.add(RISCVInstruction.ADDI(register, 0, 0));
+        left.addAll(nopSequence(4)); // Keep setup outside the dependency observation window.
+        right.addAll(left);
+        left.add(rs1 ? instruction.cloneAlteringRS1(0) : instruction.cloneAlteringRS2(0));
+        right.add(rs1 ? instruction.cloneAlteringRS1(register) : instruction.cloneAlteringRS2(register));
+        return new Pair<>(left, right);
     }
 
     /**

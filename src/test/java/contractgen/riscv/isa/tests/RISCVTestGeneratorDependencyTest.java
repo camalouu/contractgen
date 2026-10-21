@@ -2,6 +2,7 @@ package contractgen.riscv.isa.tests;
 
 import contractgen.riscv.isa.*;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
+import contractgen.riscv.isa.contract.RISCVObservation;
 import contractgen.util.Pair;
 import org.junit.jupiter.api.Test;
 import java.util.*;
@@ -9,6 +10,67 @@ import java.math.BigInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 final class RISCVTestGeneratorDependencyTest {
+    private static final Set<RISCV_OBSERVATION_TYPE> PREDICATES = EnumSet.of(
+            RISCV_OBSERVATION_TYPE.RD_IS_ZERO, RISCV_OBSERVATION_TYPE.RS1_IS_ZERO,
+            RISCV_OBSERVATION_TYPE.RS2_IS_ZERO, RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE);
+
+    @Test void predicatesBelongToBaseAndRespectArchitecturalFields() {
+        assertTrue(RISCV_OBSERVATION_TYPE.getBase().containsAll(PREDICATES));
+        assertFalse(new RISCVObservation(RISCV_TYPE.SW, RISCV_OBSERVATION_TYPE.RD_IS_ZERO).isApplicable());
+        assertFalse(new RISCVObservation(RISCV_TYPE.LUI, RISCV_OBSERVATION_TYPE.RS1_IS_ZERO).isApplicable());
+        for (var type : List.of(RISCV_TYPE.SLLI, RISCV_TYPE.SRLI, RISCV_TYPE.SRAI, RISCV_TYPE.ADDI))
+            assertFalse(new RISCVObservation(type, RISCV_OBSERVATION_TYPE.RS2_IS_ZERO).isApplicable());
+        assertFalse(new RISCVObservation(RISCV_TYPE.ADD, RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE).isApplicable());
+        assertTrue(new RISCVObservation(RISCV_TYPE.BEQ, RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE).isApplicable());
+        for (var predicate : PREDICATES) {
+            assertEquals("", predicate.generateObservation("1", false));
+            assertThrows(UnsupportedOperationException.class, () -> predicate.generateObservation("1", true));
+        }
+    }
+
+    @Test void generationTargetsEachPredicateWithoutTreatingShamtAsRs2() {
+        Set<RISCV_OBSERVATION_TYPE> seen = EnumSet.noneOf(RISCV_OBSERVATION_TYPE.class);
+        Set<RISCV_FORMAT> signedFormats = EnumSet.noneOf(RISCV_FORMAT.class);
+        for (long seed : new long[]{11, 35, 81}) {
+            var cases = new RISCVTestGenerator(EnumSet.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M),
+                    PREDICATES, seed, 1, false, 1, false, false, false, false).generate();
+            for (var test : cases) {
+                var atom = (RISCVObservation) test.getLikelyCTX().getDistinguishingObservations().iterator().next();
+                assertTrue(atom.isApplicable());
+                var left = ((RISCVProgram) test.getProgram1()).getProgram();
+                var right = ((RISCVProgram) test.getProgram2()).getProgram();
+                var a = left.get(left.size() - 6); // Target followed by five NOPs.
+                var b = right.get(right.size() - 6);
+                seen.add(atom.observation());
+                switch (atom.observation()) {
+                    case RD_IS_ZERO -> { assertEquals(0, a.rd()); assertNotEquals(0, b.rd()); }
+                    case RS1_IS_ZERO, RS2_IS_ZERO -> {
+                        boolean first = atom.observation() == RISCV_OBSERVATION_TYPE.RS1_IS_ZERO;
+                        int register = first ? b.rs1() : b.rs2();
+                        assertEquals(0, first ? a.rs1() : a.rs2());
+                        assertNotEquals(0, register);
+                        assertEquals(RISCVInstruction.ADDI(register, 0, 0), left.get(0));
+                        assertEquals(left.get(0), right.get(0));
+                        if (!first) assertTrue(a.hasArchitecturalRS2());
+                    }
+                    case IMM_IS_NEGATIVE -> {
+                        signedFormats.add(a.type().getFormat());
+                        assertEquals('0', a.toBinaryEncoding().charAt(0));
+                        assertEquals('1', b.toBinaryEncoding().charAt(0));
+                        long bits1 = Long.parseUnsignedLong(a.toBinaryEncoding(), 2);
+                        long bits2 = Long.parseUnsignedLong(b.toBinaryEncoding(), 2);
+                        assertEquals(0x80000000L, bits1 ^ bits2);
+                    }
+                    default -> fail("Unexpected target " + atom);
+                }
+            }
+        }
+        assertEquals(PREDICATES, seen);
+        assertEquals(EnumSet.of(RISCV_FORMAT.ITYPE, RISCV_FORMAT.STYPE, RISCV_FORMAT.BTYPE,
+                RISCV_FORMAT.JTYPE, RISCV_FORMAT.UTYPE), signedFormats);
+    }
+
+
     private static final Set<RISCV_TYPE> PRODUCERS = EnumSet.of(RISCV_TYPE.ADD, RISCV_TYPE.ADDI, RISCV_TYPE.SUB, RISCV_TYPE.OR, RISCV_TYPE.ORI,
                 RISCV_TYPE.AND, RISCV_TYPE.ANDI, RISCV_TYPE.XOR, RISCV_TYPE.XORI, RISCV_TYPE.SLT,
                 RISCV_TYPE.SLTI, RISCV_TYPE.SLTU, RISCV_TYPE.SLTIU, RISCV_TYPE.SLL, RISCV_TYPE.SLLI,

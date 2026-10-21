@@ -1,5 +1,3 @@
-diff --git a/spike_main/contract-spike-diff.cc b/spike_main/contract-spike-diff.cc
-index 059963cb..bf98ca05 100644
 --- a/spike_main/contract-spike-diff.cc
 +++ b/spike_main/contract-spike-diff.cc
 @@ -9,7 +9,9 @@
@@ -31,7 +29,7 @@ index 059963cb..bf98ca05 100644
  
  struct json_value {
    using object_t = std::map<std::string, json_value>;
-@@ -43,7 +48,14 @@ struct json_value {
+@@ -43,7 +48,14 @@
    const object_t& object() const { return std::get<object_t>(value); }
    const array_t& array() const { return std::get<array_t>(value); }
    const std::string& string() const { return std::get<std::string>(value); }
@@ -47,7 +45,7 @@ index 059963cb..bf98ca05 100644
    bool is_null() const { return std::holds_alternative<std::nullptr_t>(value); }
  };
  
-@@ -97,7 +109,8 @@ private:
+@@ -97,7 +109,8 @@
        std::string key = parse_string();
        skip_ws();
        expect(':');
@@ -57,7 +55,7 @@ index 059963cb..bf98ca05 100644
        skip_ws();
        if (consume('}')) return out;
        expect(',');
-@@ -303,6 +316,20 @@ const json_value* find_field(const json_value::object_t& obj, const std::string&
+@@ -303,6 +316,20 @@
    return it == obj.end() ? nullptr : &it->second;
  }
  
@@ -78,7 +76,7 @@ index 059963cb..bf98ca05 100644
  int64_t int_field(const json_value::object_t& obj, const std::string& key, int64_t fallback = 0)
  {
    const auto* field = find_field(obj, key);
-@@ -313,7 +340,7 @@ std::optional<int> opt_int_field(const json_value::object_t& obj, const std::str
+@@ -313,7 +340,7 @@
  {
    const auto* field = find_field(obj, key);
    if (!field || field->is_null()) return std::nullopt;
@@ -87,7 +85,7 @@ index 059963cb..bf98ca05 100644
  }
  
  std::optional<int64_t> opt_i64_field(const json_value::object_t& obj, const std::string& key)
-@@ -327,7 +354,10 @@ std::map<int, std::optional<int64_t>> parse_registers(const json_value& value)
+@@ -327,7 +354,10 @@
  {
    std::map<int, std::optional<int64_t>> out;
    for (const auto& entry : value.object()) {
@@ -99,7 +97,7 @@ index 059963cb..bf98ca05 100644
      if (entry.second.is_null())
        out[reg] = std::nullopt;
      else
-@@ -342,7 +372,7 @@ std::vector<program_insn> parse_program(const json_value& value)
+@@ -342,7 +372,7 @@
    for (const auto& raw : value.array()) {
      const auto& obj = raw.object();
      program_insn insn;
@@ -108,7 +106,7 @@ index 059963cb..bf98ca05 100644
      insn.rd = opt_int_field(obj, "rd");
      insn.rs1 = opt_int_field(obj, "rs1");
      insn.rs2 = opt_int_field(obj, "rs2");
-@@ -360,12 +390,12 @@ std::vector<test_case> parse_testcases_json(const std::string& json)
+@@ -360,12 +390,12 @@
    for (const auto& raw : root.array()) {
      const auto& obj = raw.object();
      test_case tc;
@@ -127,19 +125,20 @@ index 059963cb..bf98ca05 100644
      out.push_back(std::move(tc));
    }
    return out;
-@@ -439,8 +469,10 @@ uint32_t encode_addi(int rd, int rs1, int64_t imm)
+@@ -439,8 +469,10 @@
  
  std::vector<uint32_t> words_for(const std::map<int, std::optional<int64_t>>& regs,
                                  const std::vector<program_insn>& program,
 -                                int max_instruction_count)
+-{
 +                                int max_instruction_count, execution_model model = execution_model::rv32_v1)
- {
++{
 +  if ((max_instruction_count < 0 || program.size() > IMAGE_WORDS - 32))
 +    throw std::runtime_error("Invalid rv32-v1 program image bounds");
    std::vector<uint32_t> words;
    for (int reg = 1; reg < 32; reg++) {
      auto it = regs.find(reg);
-@@ -452,7 +484,7 @@ std::vector<uint32_t> words_for(const std::map<int, std::optional<int64_t>>& reg
+@@ -452,7 +484,7 @@
    words.push_back(NOP);
    for (const auto& insn : program)
      words.push_back(encode(insn));
@@ -148,7 +147,7 @@ index 059963cb..bf98ca05 100644
      words.push_back(NOP);
    return words;
  }
-@@ -558,133 +590,6 @@ uint32_t sext(uint32_t value, unsigned bits)
+@@ -558,133 +590,6 @@
    return (value ^ mask) - mask;
  }
  
@@ -282,7 +281,7 @@ index 059963cb..bf98ca05 100644
  bool branch_taken(const decoded_insn& insn, uint32_t rs1, uint32_t rs2)
  {
    if (insn.type == "JAL" || insn.type == "JALR") return true;
-@@ -710,140 +615,118 @@ struct sample {
+@@ -710,137 +615,115 @@
    uint64_t mem_w_data = 0;
  };
  
@@ -326,6 +325,12 @@ index 059963cb..bf98ca05 100644
 -    sim = std::make_unique<sim_t>(&cfg, false, mems, plugin_devices, false, htif_args, dm_config,
 -            "/dev/null", false, nullptr, false, nullptr, std::nullopt);
 -    sim->get_core(0)->enable_log_commits();
+-  }
+-
+-  std::vector<sample> run_side(const std::vector<uint32_t>& words, int retire_count) {
+-    store_words(mem, words);
+-    processor_t* proc = sim->get_core(0);
+-    
 +  using page = std::array<char, 4096>;
 +  std::map<uint32_t, page> data_pages, instruction_pages;
 +  const std::vector<uint32_t>* image = nullptr;
@@ -344,16 +349,7 @@ index 059963cb..bf98ca05 100644
 +    cfg.pmpregions = 0;
 +    proc = std::make_unique<processor_t>(isa.c_str(), "M", &cfg, this, 0, false, nullptr, std::cerr);
 +    harts[0] = proc.get();
-   }
--
--  std::vector<sample> run_side(const std::vector<uint32_t>& words, int retire_count) {
--    store_words(mem, words);
--    processor_t* proc = sim->get_core(0);
--    
--    proc->reset();
--    state_t* state = proc->get_state();
--    for (int i = 0; i < 32; i++) {
--        state->XPR.write(i, 0);
++  }
 +  char* addr_to_mem(reg_t address) override {
 +    const uint32_t addr = uint32_t(address);
 +    const uint32_t base = addr & ~4095u;
@@ -366,13 +362,7 @@ index 059963cb..bf98ca05 100644
 +            ? (*image)[(key - HARNESS_TEXT_BASE) / 4] : NOP;
 +        it->second[offset] = char(word >> (8 * (key & 3)));
 +      }
-     }
--    state->log_reg_write.clear();
--    state->log_mem_read.clear();
--    state->log_mem_write.clear();
--    state->pc = TEXT_BASE;
--
--    data_mem_model data_mem;
++    }
 +    return it->second.data() + (addr & 4095);
 +  }
 +  bool mmio_load(reg_t, size_t, uint8_t*) override { return false; }
@@ -390,7 +380,17 @@ index 059963cb..bf98ca05 100644
 +    proc->get_mmu()->flush_tlb();
 +    data_pages.clear();
 +    instruction_pages.clear();
-+    proc->reset();
+     proc->reset();
+-    state_t* state = proc->get_state();
+-    for (int i = 0; i < 32; i++) {
+-        state->XPR.write(i, 0);
+-    }
+-    state->log_reg_write.clear();
+-    state->log_mem_read.clear();
+-    state->log_mem_write.clear();
+-    state->pc = TEXT_BASE;
+-
+-    data_mem_model data_mem;
 +    auto* state = proc->get_state();
 +    for (int i = 0; i < 32; ++i) state->XPR.write(i, 0);
 +    state->pc = HARNESS_TEXT_BASE;
@@ -440,7 +440,19 @@ index 059963cb..bf98ca05 100644
 -    s.next_pc = pc + 4;
 -    if (synthetic_nop) {
 -      state->pc = pc + 4;
--      out.push_back(s);
++      try {
++        fetching = true;
++        const auto fetch = proc->get_mmu()->load_insn(pc);
++        fetching = false;
++        s.next_pc = uint32_t(fetch.func(proc.get(), fetch.insn, pc));
++      } catch (trap_t& trap) {
++        fetching = false;
++        throw std::runtime_error(std::string("rv32-v1 architectural trap: ") + trap.name());
++      }
++      if (s.next_pc & 3) throw std::runtime_error("Misaligned rv32-v1 control-flow target");
++      if (decoded.rd) s.reg_rd = uint32_t(state->XPR[*decoded.rd]);
++      state->pc = s.next_pc;
+       out.push_back(s);
 -      continue;
 -    }
 -    if (decoded.rs1) s.reg_rs1 = state->XPR[*decoded.rs1];
@@ -460,15 +472,7 @@ index 059963cb..bf98ca05 100644
 -        if (auto value = semantic_rd_value(decoded, pc, static_cast<uint32_t>(s.reg_rs1),
 -                                           static_cast<uint32_t>(s.reg_rs2)))
 -          s.reg_rd = *value;
-+      try {
-+        fetching = true;
-+        const auto fetch = proc->get_mmu()->load_insn(pc);
-+        fetching = false;
-+        s.next_pc = uint32_t(fetch.func(proc.get(), fetch.insn, pc));
-+      } catch (trap_t& trap) {
-+        fetching = false;
-+        throw std::runtime_error(std::string("rv32-v1 architectural trap: ") + trap.name());
-       }
+-      }
 -    }
 -
 -    // Execute against the bounded sparse-memory model so arbitrary generated
@@ -501,15 +505,11 @@ index 059963cb..bf98ca05 100644
 -    }
 -    s.next_pc = state->pc;
 -    out.push_back(s);
-+      if (s.next_pc & 3) throw std::runtime_error("Misaligned rv32-v1 control-flow target");
-+      if (decoded.rd) s.reg_rd = uint32_t(state->XPR[*decoded.rd]);
-+      state->pc = s.next_pc;
-+      out.push_back(s);
      }
      return out;
-   }
- };
- 
++  }
++};
++
 +struct spike_runner {
 +  execution_model model = execution_model::rv32_v1;
 +  std::unique_ptr<architectural_environment> architectural;
@@ -517,13 +517,47 @@ index 059963cb..bf98ca05 100644
 +      : architectural(std::make_unique<architectural_environment>(isa)) {}
 +  std::vector<sample> run_side(const std::vector<uint32_t>& words, int retire_count) {
 +    return architectural->run(words, retire_count);
-+  }
-+};
+   }
+ };
+ 
+@@ -889,6 +772,20 @@
+   } else if (!has1 && has2) {
+     atoms.insert({i2.type, observation});
+   }
++}
 +
- struct atom {
-   std::string type;
-   std::string observation;
-@@ -1052,6 +935,7 @@ struct case_result {
++bool immediate_is_negative(const decoded_insn& insn)
++{
++  if (!insn.imm) return false;
++  unsigned sign_bit;
++  switch (insn.format) {
++    case format_t::i: case format_t::s: sign_bit = 11; break;
++    case format_t::b: sign_bit = 12; break;
++    case format_t::j: sign_bit = 20; break;
++    case format_t::u: sign_bit = 31; break;
++    case format_t::r: return false; // Shift amounts are unsigned, not immediates here.
++  }
++  return (*insn.imm & (uint32_t(1) << sign_bit)) != 0;
+ }
+ 
+ int floor_log2_32(uint64_t value)
+@@ -983,6 +880,15 @@
+     const bool has_rs2_2 = i2.rs2.has_value() && !is_shift_imm(i2);
+     const bool has_rd_1 = i1.rd.has_value();
+     const bool has_rd_2 = i2.rd.has_value();
++
++    compare_value(atoms, i1, i2, "RD_IS_ZERO", has_rd_1, has_rd_2,
++                  i1.rd == 0, i2.rd == 0);
++    compare_value(atoms, i1, i2, "RS1_IS_ZERO", has_rs1_1, has_rs1_2,
++                  i1.rs1 == 0, i2.rs1 == 0);
++    compare_value(atoms, i1, i2, "RS2_IS_ZERO", has_rs2_1, has_rs2_2,
++                  i1.rs2 == 0, i2.rs2 == 0);
++    compare_value(atoms, i1, i2, "IMM_IS_NEGATIVE", i1.imm.has_value(), i2.imm.has_value(),
++                  immediate_is_negative(i1), immediate_is_negative(i2));
+ 
+     compare_value(atoms, i1, i2, "REG_RS1", has_rs1_1, has_rs1_2,
+                   left[idx].reg_rs1, right[idx].reg_rs1);
+@@ -1052,6 +958,7 @@
    std::map<atom, int> atoms;
    std::map<instruction_pair, int> instruction_pairs;
    std::optional<std::string> error;
@@ -531,7 +565,7 @@ index 059963cb..bf98ca05 100644
  };
  
  case_result run_case(const test_case& tc, spike_runner& runner, int ordinal = -1)
-@@ -1060,11 +944,18 @@ case_result run_case(const test_case& tc, spike_runner& runner, int ordinal = -1
+@@ -1060,11 +967,18 @@
    result.ordinal = ordinal;
    result.index = tc.index;
    try {
@@ -552,16 +586,17 @@ index 059963cb..bf98ca05 100644
      auto evidence = extract_evidence(left, right);
      result.atoms = std::move(evidence.atoms);
      result.instruction_pairs = std::move(evidence.instruction_pairs);
-@@ -1119,38 +1010,46 @@ void write_instruction_pairs(std::ostream& out,
+@@ -1119,38 +1033,46 @@
    out << "]";
  }
  
 -void write_result(std::ostream& out, const case_result& result)
+-{
+-  out << "{\"ordinal\":" << result.ordinal
 +void write_result(std::ostream& out, const case_result& result,
 +                  execution_model model = execution_model::rv32_v1)
- {
--  out << "{\"ordinal\":" << result.ordinal
-+  out << "{";
++{
++  out << "{\"structural_predicates_version\":1,";
 +  if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
 +  out << "\"ordinal\":" << result.ordinal
        << ",\"case_index\":" << result.index << ",\"atoms\":";
@@ -583,7 +618,7 @@ index 059963cb..bf98ca05 100644
    for (const auto& result : results)
      if (result.error) failed++;
 -  out << "{\"cases\":[";
-+  out << "{";
++  out << "{\"structural_predicates_version\":1,";
 +  if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
 +  out << "\"cases\":[";
    for (size_t i = 0; i < results.size(); i++) {
@@ -606,7 +641,7 @@ index 059963cb..bf98ca05 100644
    if (ordinal < 0) {
      results.reserve(cases.size());
      for (size_t i = 0; i < cases.size(); i++)
-@@ -1161,7 +1060,7 @@ std::string run_testcases_json(const std::string& testcases_json, const std::str
+@@ -1161,7 +1083,7 @@
      results.push_back(run_case(cases[ordinal], runner, ordinal));
    }
    std::ostringstream out;
@@ -615,7 +650,7 @@ index 059963cb..bf98ca05 100644
    return out.str();
  }
  
-@@ -1169,7 +1068,7 @@ void usage(const char* name)
+@@ -1169,7 +1091,7 @@
  {
    std::cerr << "usage: " << name
              << " --testcases <path> (--case-index <n> | --all)"
@@ -624,7 +659,7 @@ index 059963cb..bf98ca05 100644
  }
  
  } // namespace
-@@ -1203,6 +1102,35 @@ extern "C" char* contract_spike_atoms_json(const char* testcases_json,
+@@ -1203,6 +1125,35 @@
    }
  }
  
@@ -660,7 +695,7 @@ index 059963cb..bf98ca05 100644
  extern "C" void contract_spike_free(char* ptr)
  {
    std::free(ptr);
-@@ -1215,6 +1143,7 @@ int main(int argc, char** argv)
+@@ -1215,6 +1166,7 @@
    std::string isa = "RV32IM_Zicclsm";
    std::optional<int> case_index;
    bool all = false;
@@ -668,7 +703,7 @@ index 059963cb..bf98ca05 100644
  
    for (int i = 1; i < argc; i++) {
      const std::string arg = argv[i];
-@@ -1234,6 +1163,8 @@ int main(int argc, char** argv)
+@@ -1234,6 +1186,8 @@
          json_out_path = require_value(arg);
        } else if (arg == "--isa") {
          isa = require_value(arg);
@@ -677,7 +712,7 @@ index 059963cb..bf98ca05 100644
        } else if (arg == "-h" || arg == "--help") {
          usage(argv[0]);
          return 0;
-@@ -1255,7 +1186,7 @@ int main(int argc, char** argv)
+@@ -1255,7 +1209,7 @@
    try {
      const auto cases = parse_testcases(testcases_path);
      std::vector<case_result> results;
@@ -686,7 +721,7 @@ index 059963cb..bf98ca05 100644
      if (all) {
        results.reserve(cases.size());
        for (size_t i = 0; i < cases.size(); i++)
-@@ -1279,10 +1210,10 @@ int main(int argc, char** argv)
+@@ -1279,10 +1233,10 @@
      }
  
      if (!all) {
@@ -699,12 +734,9 @@ index 059963cb..bf98ca05 100644
      }
  
      return std::any_of(results.begin(), results.end(), [](const case_result& r) {
-diff --git a/spike_main/contract-spike-execution-model-test.cc b/spike_main/contract-spike-execution-model-test.cc
-new file mode 100644
-index 00000000..4bdfdfb8
 --- /dev/null
 +++ b/spike_main/contract-spike-execution-model-test.cc
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,177 @@
 +// Compile against the adapted Spike checkout; assertions inspect architectural samples.
 +#define main contract_spike_cli_main
 +#include "contract-spike-diff.cc"
@@ -834,5 +866,51 @@ index 00000000..4bdfdfb8
 +  char* valid = contract_spike_atoms_json_v2("[]", "RV32IM", -1, "rv32-v1");
 +  assert(valid && !std::strstr(valid, "\"error\""));
 +  contract_spike_free(valid);
++  // Predicate observations concern register indices, not values: every source
++  // and untouched data byte below is zero on both sides.
++  auto compare_predicate = [&](program_insn left, program_insn right,
++                               const std::string& observation, bool expected) {
++    auto evidence = extract_evidence(run({encode(left)}), run({encode(right)}));
++    atom observed{left.type, observation};
++    assert((evidence.atoms.count(observed) != 0) == expected);
++    if (expected) assert(evidence.atoms.at(observed) == 33);
++    return evidence;
++  };
++  auto zero_load = compare_predicate({"LW",0,0,{},0}, {"LW",3,0,{},0}, "RD_IS_ZERO", true);
++  assert(zero_load.atoms.count(atom{"LW","REG_RD_ZERO"}) == 0);
++  compare_predicate({"LW",1,0,{},0}, {"LW",3,0,{},0}, "RD_IS_ZERO", false);
++  compare_predicate({"LW",0,0,{},0}, {"LW",0,0,{},0}, "RD_IS_ZERO", false);
++  for (const auto observation : {"RS1_IS_ZERO", "RS2_IS_ZERO"}) {
++    bool first = std::string(observation) == "RS1_IS_ZERO";
++    auto make = [&](unsigned reg) { return program_insn{"ADD",3,first ? reg : 2,first ? 2 : reg,{}}; };
++    auto equal_values = compare_predicate(make(0), make(1), observation, true);
++    assert(equal_values.atoms.count(atom{"ADD",first ? "REG_RS1_ZERO" : "REG_RS2_ZERO"}) == 0);
++    compare_predicate(make(1), make(4), observation, false);
++    compare_predicate(make(0), make(0), observation, false);
++  }
++  // The shamt field is not a source register, even when its bits are zero.
++  compare_predicate({"SLLI",3,0,0,{}}, {"SLLI",3,0,1,{}}, "RS2_IS_ZERO", false);
++  for (program_insn positive : std::vector<program_insn>{
++      {"ADDI",3,0,{},4}, {"SW",{},0,0,4}, {"BNE",{},0,0,4},
++      {"JAL",0,{},{},4}, {"JALR",0,0,{},4},
++      {"LUI",3,{},{},4096}, {"AUIPC",3,{},{},4096}}) {
++    auto decoded = decode(encode(positive));
++    unsigned bit = decoded.format == format_t::b ? 12 : decoded.format == format_t::j ? 20
++                 : decoded.format == format_t::u ? 31 : 11;
++    auto negative = positive;
++    negative.imm = *positive.imm | (uint32_t(1) << bit);
++    compare_predicate(positive, negative, "IMM_IS_NEGATIVE", true);
++    auto another = positive;
++    another.imm = *positive.imm * 2;
++    compare_predicate(positive, another, "IMM_IS_NEGATIVE", false);
++    another.imm = *another.imm | (uint32_t(1) << bit);
++    compare_predicate(negative, another, "IMM_IS_NEGATIVE", false);
++  }
++  auto boundary = program_insn{"ADDI",3,0,{},2047};
++  auto signed_min = boundary; signed_min.imm = 2048;
++  compare_predicate(boundary, signed_min, "IMM_IS_NEGATIVE", true);
++  boundary.imm = 0; signed_min.imm = 1;
++  compare_predicate(boundary, signed_min, "IMM_IS_NEGATIVE", false);
++  assert(batch.str().find("\"structural_predicates_version\":1") != std::string::npos);
 +  std::cout << "Shared RV32 execution model architectural checks passed\n";
 +}

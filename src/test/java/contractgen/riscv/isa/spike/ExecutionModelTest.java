@@ -18,12 +18,17 @@ class ExecutionModelTest {
     }
 
     private Path library(String model, String cases) throws Exception {
+        return library(model, cases, true);
+    }
+
+    private Path library(String model, String cases, boolean predicates) throws Exception {
         Path source = temp.resolve("spike.c");
         String legacy = "{\"cases\":[]}";
         var array = com.google.gson.JsonParser.parseString("[" + cases + "]").getAsJsonArray();
         for (var raw : array) if (!raw.getAsJsonObject().has("requires_misaligned_data_access"))
             raw.getAsJsonObject().addProperty("requires_misaligned_data_access", false);
-        String canonical = "{\"atom_schema\":\"producer-dependencies-v1\",\"execution_model\":\"" + model + "\",\"cases\":" + array + "}";
+        String canonical = "{\"atom_schema\":\"producer-dependencies-v1\",\"execution_model\":\"" + model + "\","
+                + (predicates ? "\"structural_predicates_version\":1," : "") + "\"cases\":" + array + "}";
         String code = "#include <stdlib.h>\n#include <string.h>\n"
                 + "char* contract_spike_atoms_json(const char*j,const char*i,int o){return strdup(\""
                 + legacy.replace("\"", "\\\"") + "\");}\n"
@@ -47,6 +52,15 @@ class ExecutionModelTest {
                 () -> new SpikeAtomClient(lib, ExecutionModel.RV32_V1).runAllJson("[]", "RV32IM"));
         assertTrue(error.getMessage().contains("contract_spike_atoms_json_v2"));
         assertThrows(IllegalArgumentException.class, () -> ExecutionModel.parse("rocket-rv32-v1"));
+    }
+
+    @Test void olderLibraryCannotSilentlyOmitRequestedPredicates() throws Exception {
+        Path lib = library("rv32-v1", "{\"ordinal\":0,\"case_index\":7,\"atoms\":[]}", false);
+        var client = new SpikeAtomClient(lib);
+        var error = assertThrows(IllegalStateException.class, () -> client.runAll("[]", "RV32IM",
+                Set.of(RISCV_OBSERVATION_TYPE.RD_IS_ZERO)));
+        assertTrue(error.getMessage().contains("rebuild"));
+        assertEquals(1, client.runAll("[]", "RV32IM", Set.of(RISCV_OBSERVATION_TYPE.RD)).size());
     }
 
     @Test void modelAndTemporaryRootReachBothExecutionPaths() throws Exception {

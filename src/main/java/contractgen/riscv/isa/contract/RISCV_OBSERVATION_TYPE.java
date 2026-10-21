@@ -162,7 +162,15 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
     /**
      * The low five bits of the value of rs2.
      */
-    REG_RS2_LOW5(38, "reg_rs2_low5");
+    REG_RS2_LOW5(38, "reg_rs2_low5"),
+    /** Whether the destination register is x0, independently of its value. */
+    RD_IS_ZERO(39, "rd_is_zero"),
+    /** Whether the first source register is x0, independently of its value. */
+    RS1_IS_ZERO(40, "rs1_is_zero"),
+    /** Whether the architectural second source register is x0. */
+    RS2_IS_ZERO(41, "rs2_is_zero"),
+    /** Sign of the decoded immediate, using its architectural signed width. */
+    IMM_IS_NEGATIVE(42, "imm_is_negative");
 
 
     /**
@@ -200,7 +208,15 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
      * @return The respective observation in Verilog.
      */
     public String generateObservation(String suffix, boolean hasObservation) {
+        if (isStructuralPredicate()) {
+            if (hasObservation) throw new UnsupportedOperationException("" + this + " requires Spike; the legacy RVFI monitor does not implement it.");
+            return "";
+        }
         return "ctr_observation_" + suffix + "." + this.encoding + " = " + (hasObservation ? "{1'b1, " + this.encoding + "_" + suffix + "}" : "0") + ";\n";
+    }
+
+    public boolean isStructuralPredicate() {
+        return this == RD_IS_ZERO || this == RS1_IS_ZERO || this == RS2_IS_ZERO || this == IMM_IS_NEGATIVE;
     }
 
     /**
@@ -221,7 +237,11 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
                 REG_RD,
                 MEM_ADDR,
                 MEM_R_DATA,
-                MEM_W_DATA
+                MEM_W_DATA,
+                RD_IS_ZERO,
+                RS1_IS_ZERO,
+                RS2_IS_ZERO,
+                IMM_IS_NEGATIVE
         );
     }
 
