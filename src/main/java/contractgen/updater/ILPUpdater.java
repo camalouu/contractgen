@@ -81,7 +81,7 @@ public class ILPUpdater implements Updater {
         // variables representing whether obs is chosen or not
         HashMap<Observation, MPVariable> selected_observations = new HashMap<>(allObservations.size());
         for (Observation obs : allObservations) {
-            MPVariable var = solver.makeIntVar(0, 1, "S_" + obs.getType().toString() + "_" + obs.getObservation().toString());
+            MPVariable var = solver.makeIntVar(0, 1, "S_" + obs.toString().trim().replaceAll("\\s+", "_"));
             selected_observations.put(obs, var);
             double hinted = oldContract.contains(obs) ? 1.0 : 0.0;
             if (required.contains(obs)) hinted = 1.0;
@@ -99,7 +99,7 @@ public class ILPUpdater implements Updater {
 
         Map<Type, Set<Observation>> grouped_observations = new HashMap<>();
         for (Observation obs : allObservations) {
-            grouped_observations.computeIfAbsent(obs.getType(), k -> new HashSet<>()).add(obs);
+            if (obs.isTypeScoped()) grouped_observations.computeIfAbsent(obs.getType(), k -> new HashSet<>()).add(obs);
         }
 
         Map<Pair<Type, Type>, Set<MPVariable>> type_pairs = new HashMap<>();
@@ -111,8 +111,8 @@ public class ILPUpdater implements Updater {
         ));
 
         for ( Map.Entry<Pair<Type, Type>, Set<MPVariable>> entry : type_pairs.entrySet()) {
-            Set<Observation> obs1 = grouped_observations.get(entry.getKey().left());
-            Set<Observation> obs2 = grouped_observations.get(entry.getKey().right());
+            Set<Observation> obs1 = grouped_observations.getOrDefault(entry.getKey().left(), Set.of());
+            Set<Observation> obs2 = grouped_observations.getOrDefault(entry.getKey().right(), Set.of());
             Set<Pair<Observation, Observation>> intersection = new HashSet<>();
             for (Observation o1 : obs1) {
                 for (Observation o2 : obs2) {

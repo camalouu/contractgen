@@ -1,0 +1,123 @@
+--- a/spike_main/contract-spike-diff.cc
++++ b/spike_main/contract-spike-diff.cc
+@@ -13,6 +13,7 @@
+ #include <cctype>
+ #include <cmath>
+ #include <cstring>
++#include <iterator>
+ #include <cstdint>
+ #include <cstdlib>
+ #include <fstream>
+@@ -730,10 +731,11 @@
+ struct atom {
+   std::string type;
+   std::string observation;
++  std::string producer; // Empty for ordinary atoms.
+ 
+   bool operator<(const atom& other) const
+   {
+-    return std::tie(type, observation) < std::tie(other.type, other.observation);
++    return std::tie(type, observation, producer) < std::tie(other.type, other.observation, other.producer);
+   }
+ };
+ 
+@@ -812,24 +814,31 @@
+                 floor_log2_32(v1), floor_log2_32(v2));
+ }
+ 
+-void compare_dependency(std::set<atom>& atoms, const decoded_insn& i1, const decoded_insn& i2,
+-                        const decoded_insn& p1, const decoded_insn& p2,
+-                        const std::string& observation,
+-                        std::optional<uint32_t> r1, std::optional<uint32_t> r2)
+-{
+-  const bool has1 = r1.has_value() && p1.rd.has_value();
+-  const bool has2 = r2.has_value() && p2.rd.has_value();
+-  const bool dep1 = has1 && *r1 == *p1.rd;
+-  const bool dep2 = has2 && *r2 == *p2.rd;
+-
+-  if (has1 && has2 && dep1 != dep2) {
+-    atoms.insert({i1.type, observation});
+-    atoms.insert({i2.type, observation});
+-  } else if (has1 && !has2) {
+-    atoms.insert({i1.type, observation});
+-  } else if (!has1 && has2) {
+-    atoms.insert({i2.type, observation});
+-  }
++// Qualified dependencies are booleans, false outside their instruction pair.
++// Comparing the true predicates also catches different producers/consumers
++// when both executions have a register link.
++std::set<atom> dependency_atoms(const std::vector<sample>& trace, size_t idx)
++{
++  std::set<atom> out;
++  const auto consumer = decode(trace[idx].instr);
++  for (size_t distance = 1; distance <= 4 && distance <= idx; ++distance) {
++    const auto producer = decode(trace[idx - distance].instr);
++    if (!producer.rd || *producer.rd == 0) continue;
++    bool overwritten = false;
++    for (size_t j = idx - distance + 1; j < idx; ++j) {
++      const auto between = decode(trace[j].instr);
++      if (between.rd && *between.rd == *producer.rd) overwritten = true;
++    }
++    const auto suffix = "_" + std::to_string(distance);
++    auto add = [&](std::optional<uint32_t> reg, const std::string& relation, bool raw) {
++      if (reg && *reg == *producer.rd && (!raw || !overwritten))
++        out.insert({consumer.type, relation + suffix, producer.type});
++    };
++    add(consumer.rs1, "RAW_RS1", true);
++    add(is_shift_imm(consumer) ? std::nullopt : consumer.rs2, "RAW_RS2", true);
++    add(consumer.rd, "WAW", false);
++  }
++  return out;
+ }
+ 
+ extracted_evidence extract_evidence(const std::vector<sample>& left, const std::vector<sample>& right)
+@@ -913,15 +922,11 @@
+     compare_value(atoms, i1, i2, "NEW_PC", is_control(i1), is_control(i2),
+                   left[idx].next_pc, right[idx].next_pc);
+ 
+-    for (size_t distance = 1; distance <= 4; distance++) {
+-      if (idx < distance) break;
+-      const auto p1 = decode(left[idx - distance].instr);
+-      const auto p2 = decode(right[idx - distance].instr);
+-      const std::string suffix = "_" + std::to_string(distance);
+-      compare_dependency(atoms, i1, i2, p1, p2, "RAW_RS1" + suffix, i1.rs1, i2.rs1);
+-      compare_dependency(atoms, i1, i2, p1, p2, "RAW_RS2" + suffix, i1.rs2, i2.rs2);
+-      compare_dependency(atoms, i1, i2, p1, p2, "WAW" + suffix, i1.rd, i2.rd);
+-    }
++    const auto left_dependencies = dependency_atoms(left, idx);
++    const auto right_dependencies = dependency_atoms(right, idx);
++    std::set_symmetric_difference(left_dependencies.begin(), left_dependencies.end(),
++                                  right_dependencies.begin(), right_dependencies.end(),
++                                  std::inserter(atoms, atoms.end()));
+ 
+     for (const auto& observed : atoms)
+       evidence.atoms.emplace(observed, retire);
+@@ -990,7 +995,9 @@
+     first = false;
+     out << "{\"type\":\"" << json_escape(a.type) << "\",\"observation\":\""
+         << json_escape(a.observation) << "\",\"first_retire\":"
+-        << first_retire << "}";
++        << first_retire;
++    if (!a.producer.empty()) out << ",\"producer\":\"" << json_escape(a.producer) << "\"";
++    out << "}";
+   }
+   out << "]";
+ }
+@@ -1013,7 +1020,7 @@
+ void write_result(std::ostream& out, const case_result& result,
+                   execution_model model = execution_model::rv32_v1)
+ {
+-  out << "{";
++  out << "{\"atom_schema\":\"producer-dependencies-v1\",";
+   if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
+   out << "\"ordinal\":" << result.ordinal
+       << ",\"case_index\":" << result.index << ",\"atoms\":";
+@@ -1033,7 +1040,7 @@
+   size_t failed = 0;
+   for (const auto& result : results)
+     if (result.error) failed++;
+-  out << "{";
++  out << "{\"atom_schema\":\"producer-dependencies-v1\",";
+   if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
+   out << "\"cases\":[";
+   for (size_t i = 0; i < results.size(); i++) {

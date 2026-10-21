@@ -34,7 +34,7 @@ public class CVA6Test extends MARCH {
     protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("cva6-test/simulation/").toString() + "/";
 
     public CVA6Test(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowedObservations, Set<RISCV_SUBSET> isa, boolean isSP) {
-        super(new RISCV(allowedObservations, isa, updater, testCases), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
+        super(new RISCV(allowedObservations, isa, updater, testCases, true), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
     }
 
     @Override

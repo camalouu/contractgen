@@ -16,6 +16,9 @@ public interface Observation {
 
     boolean matchExceptType(Observation observation);
 
+    /** Whether selecting this observation exposes its instruction-specific presence. */
+    default boolean isTypeScoped() { return true; }
+
     @Override
     boolean equals(Object o);
 

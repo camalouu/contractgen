@@ -67,6 +67,7 @@ public final class AdaptiveAttackerRunner {
     private final Object observerLock = new Object();
     private int completionSequence;
     private long startedNanos;
+    private SignatureReport.Outcome[] measuredOutcomes;
 
     /**
      * Reuses the Spike-signature adaptive strategy with any attacker-only RTL harness.
@@ -136,6 +137,7 @@ public final class AdaptiveAttackerRunner {
             List<TestCase> ordinalTests,
             Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal
     ) {
+        measuredOutcomes = new SignatureReport.Outcome[tests.size()];
         startedNanos = System.nanoTime();
         completionSequence = 0;
         List<SignatureGroup> signatureGroups = groupBySignature(tests.size(), spikeByOrdinal, eligible);
@@ -184,7 +186,8 @@ public final class AdaptiveAttackerRunner {
             throw new IllegalStateException(harnessName + " adaptive attacker execution failed", runnerFailure.get());
         }
         System.out.println();
-        return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures));
+        return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures),
+                SignatureReport.collect(tests.size(), spikeByOrdinal, eligible, measuredOutcomes));
     }
 
     private Result runScheduled(List<TestCase> tests, List<TestCase> ordinalTests,
@@ -223,7 +226,8 @@ public final class AdaptiveAttackerRunner {
             }
         }
         if (failure.get() != null) throw new IllegalStateException(harnessName + " scheduled execution failed", failure.get());
-        return new Result(groups.size(), results, stats, List.copyOf(failures));
+        return new Result(groups.size(), results, stats, List.copyOf(failures),
+                SignatureReport.collect(tests.size(), spikeByOrdinal, eligible, measuredOutcomes));
     }
 
     private static final class GroupState {
@@ -379,7 +383,8 @@ public final class AdaptiveAttackerRunner {
         }
 
         System.out.println();
-        return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures));
+        return new Result(signatureGroups.size(), mergedResults, stats, List.copyOf(failures),
+                SignatureReport.collect(tests.size(), spikeByOrdinal, eligible, measuredOutcomes));
     }
 
     private void skipRelationGroup(
@@ -482,6 +487,7 @@ public final class AdaptiveAttackerRunner {
             case ERROR, TIMEOUT, UNKNOWN -> null;
         };
         stats.executed.incrementAndGet();
+        measuredOutcomes[ordinal] = SignatureReport.Outcome.FAILURE;
         if (attackerLabel == null) {
             addFailure(stats, failures, original.getIndex() + ": attacker harness status " + simulationResult);
             return;
@@ -538,6 +544,8 @@ public final class AdaptiveAttackerRunner {
 
         mergedResults[ordinal] = new RISCVTestResult(
                 evidenceAtoms, evidencePairs, attackerLabel, original.getIndex());
+        measuredOutcomes[ordinal] = attackerLabel
+                ? SignatureReport.Outcome.LEAKING : SignatureReport.Outcome.NON_LEAKING;
         if (executionObserver != null) {
             synchronized (observerLock) {
                 executionObserver.accept(new Execution(++completionSequence, ordinal, original.getIndex(),
@@ -645,12 +653,13 @@ public final class AdaptiveAttackerRunner {
     }
 
     private static Set<RISCVObservation> observationSet(Set<RISCVObservation> atoms) {
-        Set<RISCVObservation> out = new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+        Set<RISCVObservation> out = new java.util.TreeSet<>(RISCVObservation.ORDER);
         out.addAll(atoms);
         return out;
     }
 
-    public record Result(int uniqueSignatures, RISCVTestResult[] results, Stats stats, List<String> failures) {
+    public record Result(int uniqueSignatures, RISCVTestResult[] results, Stats stats, List<String> failures,
+                         List<SignatureReport.Entry> signatures) {
     }
 
     public static final class Stats {

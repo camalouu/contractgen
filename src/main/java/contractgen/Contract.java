@@ -106,8 +106,8 @@ public abstract class Contract {
      */
     public static boolean covers(Set<Observation> contract, TestResult res) {
         for (Pair<Type, Type> distinguishingTypes: res.getDistinguishingInstructions()) {
-            Set<Observation> obs_left = contract.stream().filter(o -> o.getType().equals(distinguishingTypes.left())).collect(Collectors.toSet());
-            Set<Observation> obs_right = contract.stream().filter(o -> o.getType().equals(distinguishingTypes.right())).collect(Collectors.toSet());
+            Set<Observation> obs_left = contract.stream().filter(Observation::isTypeScoped).filter(o -> o.getType().equals(distinguishingTypes.left())).collect(Collectors.toSet());
+            Set<Observation> obs_right = contract.stream().filter(Observation::isTypeScoped).filter(o -> o.getType().equals(distinguishingTypes.right())).collect(Collectors.toSet());
             // if the number of observations for left and right type is different, the contract does always cover this
             if (obs_left.size() != obs_right.size()) {
                 return true;
@@ -129,8 +129,8 @@ public abstract class Contract {
     public static Pair<Set<Observation>, Set<Pair<Type, Type>>> whyCovers(Set<Observation> contract, TestResult res) {
         Set<Pair<Type, Type>> distinguishingTypes = new HashSet<>();
         for (Pair<Type, Type> distinguishingType : res.getDistinguishingInstructions()) {
-            Set<Observation> obs_left = contract.stream().filter(o -> o.getType().equals(distinguishingType.left())).collect(Collectors.toSet());
-            Set<Observation> obs_right = contract.stream().filter(o -> o.getType().equals(distinguishingType.right())).collect(Collectors.toSet());
+            Set<Observation> obs_left = contract.stream().filter(Observation::isTypeScoped).filter(o -> o.getType().equals(distinguishingType.left())).collect(Collectors.toSet());
+            Set<Observation> obs_right = contract.stream().filter(Observation::isTypeScoped).filter(o -> o.getType().equals(distinguishingType.right())).collect(Collectors.toSet());
             // if the number of observations for left and right type is different, the contract does always cover this
             if (obs_left.size() != obs_right.size()) {
                 distinguishingTypes.add(distinguishingType);

@@ -20,12 +20,19 @@ import java.util.stream.Collectors;
  * A contract for the RISC-V ISA.
  */
 public class RISCVContract extends Contract {
+    private final String atomSchema;
 
     /**
      * @param updater The updater to be used to compute the contract.
      */
     public RISCVContract(Set<Observation> allAtoms, Updater updater) {
+        this(allAtoms, updater, allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null)
+                ? RISCVObservation.DEPENDENCY_SCHEMA : RISCVObservation.LEGACY_SCHEMA);
+    }
+
+    public RISCVContract(Set<Observation> allAtoms, Updater updater, String atomSchema) {
         super(allAtoms, updater);
+        this.atomSchema = atomSchema;
     }
 
     /**
@@ -34,6 +41,45 @@ public class RISCVContract extends Contract {
      */
     public RISCVContract(Set<Observation> allAtoms, List<TestResult> initialResults, Updater updater) {
         super(allAtoms, initialResults, updater);
+        this.atomSchema = allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null)
+                ? RISCVObservation.DEPENDENCY_SCHEMA : RISCVObservation.LEGACY_SCHEMA;
+    }
+
+    public String atomSchema() {
+        return atomSchema == null ? RISCVObservation.LEGACY_SCHEMA : atomSchema;
+    }
+
+    public void requireCompatible(RISCVContract other) {
+        if (!atomSchema().equals(other.atomSchema()))
+            throw new IllegalArgumentException("Dependency atom schemas differ (" + atomSchema() + " / "
+                    + other.atomSchema() + "); re-extract evidence from the saved programs with current Spike.");
+    }
+
+    @Override
+    public void add(TestResult result) {
+        for (Observation atom : result.getDistinguishingObservations()) {
+            var r = (RISCVObservation) atom;
+            if (r.observation().isDependency()
+                    && (r.producer() != null) != atomSchema().equals(RISCVObservation.DEPENDENCY_SCHEMA))
+                throw new IllegalArgumentException("Dependency evidence does not match atom schema " + atomSchema());
+        }
+        super.add(result);
+    }
+
+    private static RISCVContract validateSchema(RISCVContract contract) {
+        String schema = contract.atomSchema();
+        if (!Set.of(RISCVObservation.LEGACY_SCHEMA, RISCVObservation.DEPENDENCY_SCHEMA).contains(schema))
+            throw new JsonParseException("Unknown atom schema: " + schema);
+        var atoms = java.util.stream.Stream.concat(
+                java.util.stream.Stream.concat(contract.ALL_ATOMS.stream(), contract.getCurrentContract().stream()),
+                contract.getTestResults().stream().flatMap(r -> r.getDistinguishingObservations().stream()));
+        atoms.forEach(atom -> {
+            var r = (RISCVObservation) atom;
+            if (r.observation().isDependency()
+                    && (r.producer() != null) != schema.equals(RISCVObservation.DEPENDENCY_SCHEMA))
+                throw new JsonParseException("Dependency atom does not match schema " + schema + ": " + r);
+        });
+        return contract;
     }
 
     /**
@@ -56,11 +102,16 @@ public class RISCVContract extends Contract {
                     filtered_res.add(new RISCVTestResult(filered_obs, res.getDistinguishingInstructions().stream().map(p -> new Pair<>((RISCV_TYPE) p.left(), (RISCV_TYPE) p.right())).collect(Collectors.toSet()), res.isAdversaryDistinguishable(), res.getIndex()));
                 }
         );
-        return new RISCVContract(this.ALL_ATOMS, filtered_res, this.updater);
+        var filtered = new RISCVContract(this.ALL_ATOMS, this.updater, atomSchema());
+        filtered_res.forEach(filtered::add);
+        filtered.update(true);
+        return filtered;
     }
 
     @Override
     public String printContract() {
+        if (getCurrentContract().stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null))
+            throw new UnsupportedOperationException("Producer-specific dependencies cannot be exported into the legacy RVFI contract monitor; use the JSON/text contract with the Spike pipeline.");
         Map<RISCV_TYPE, List<RISCVObservation>> observations_per_type =
                 getCurrentContract().stream().map(obs -> (RISCVObservation) obs).collect(Collectors.groupingBy(RISCVObservation::type));
 
@@ -111,7 +162,7 @@ public class RISCVContract extends Contract {
         builder.setPrettyPrinting();
         Gson gson = builder.create();
 
-        return gson.fromJson(json, RISCVContract.class);
+        return validateSchema(gson.fromJson(json, RISCVContract.class));
     }
 
     /**
@@ -130,7 +181,7 @@ public class RISCVContract extends Contract {
         builder.registerTypeAdapter(RISCV_TYPE.class, new RISCVTypeDeserializer());
         builder.setPrettyPrinting();
         Gson gson = builder.create();
-        return gson.fromJson(file, RISCVContract.class);
+        return validateSchema(gson.fromJson(file, RISCVContract.class));
     }
 
     /**
@@ -170,7 +221,9 @@ public class RISCVContract extends Contract {
             Gson gson = builder.create();
             JsonElement jsonType = jsonObject.get("type");
             JsonElement jsonObservation = jsonObject.get("observation");
-            return new RISCVObservation(gson.fromJson(jsonType, RISCV_TYPE.class), gson.fromJson(jsonObservation, RISCV_OBSERVATION_TYPE.class));
+            return new RISCVObservation(gson.fromJson(jsonType, RISCV_TYPE.class),
+                    gson.fromJson(jsonObservation, RISCV_OBSERVATION_TYPE.class),
+                    gson.fromJson(jsonObject.get("producer"), RISCV_TYPE.class));
         }
     }
 

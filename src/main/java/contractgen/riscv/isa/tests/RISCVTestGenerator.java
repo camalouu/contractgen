@@ -199,6 +199,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             for (RISCV_OBSERVATION_TYPE observation : allowed_observations) {
                 List<RISCVInstruction> p1 = new ArrayList<>();
                 List<RISCVInstruction> p2 = new ArrayList<>();
+                Set<RISCVObservation> targets = new HashSet<>();
                 boolean valid = true;
                 
                 for (int i = 0; i < reps; i++) {
@@ -213,15 +214,25 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                         valid = false;
                         break;
                     }
+                    RISCV_TYPE producer = null;
+                    if (observation.isDependency()) {
+                        for (int j = 0; j < targetInstruction.left().size(); j++) {
+                            if (!targetInstruction.left().get(j).equals(targetInstruction.right().get(j))) {
+                                producer = targetInstruction.left().get(j).type();
+                                break;
+                            }
+                        }
+                    }
+                    targets.add(new RISCVObservation(type, observation, producer));
                     
-                    if (!allow_misaligned_memory) {
+                    if (!allow_misaligned_memory && !observation.isDependency()) {
                         targetInstruction = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
                             alignMemoryAddresses(targetInstruction.left()),
                             alignMemoryAddresses(targetInstruction.right()));                
                     }
 
                     // ensure jalr are always aligned
-                    if (type == RISCV_TYPE.JALR) {
+                    if (type == RISCV_TYPE.JALR && !observation.isDependency()) {
                         targetInstruction = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
                             insertAtSecondToLast(targetInstruction.left(), RISCVInstruction.ANDI(targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), MAX_IMM_I - 4)), 
                             insertAtSecondToLast(targetInstruction.right(), RISCVInstruction.ANDI(targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), MAX_IMM_I - 4)));
@@ -249,7 +260,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                     cases.add(new RISCVTestCase(
                             new RISCVProgram(registers, p1),
                             new RISCVProgram(registers, p2),
-                            Integer.max(p1.size(), p2.size()), new RISCVTestResult(Set.of(new RISCVObservation(type, observation)), Set.of(), true, index), index++));
+                            Integer.max(p1.size(), p2.size()), new RISCVTestResult(targets, Set.of(), true, index), index++));
                 }
             }
         }
@@ -274,70 +285,135 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         return result;
     }
 
-    /**
-     * Alters a given instruction to introduce a specific possible leakage. In most cases this requires executing
-     * different instructions before the relevant instruction to alter the architectural state accordingly.
-     *
-     * @param type        The type of observation that should be triggered.
-     * @param instruction The instruction to be altered.
-     * @return A pair of sequences of instructions.
-     */
-    /** Keep register values fixed while changing a RAW or WAW dependency. */
+    /** Change the dependency while keeping architectural values equal between sides. */
     private Pair<List<RISCVInstruction>, List<RISCVInstruction>> dependencyPair(
-            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction consumer) {
         boolean waw = observation.name().startsWith("WAW_");
-        Integer input = waw ? instruction.rd()
-                : observation.name().startsWith("RAW_RS1_") ? instruction.rs1() : instruction.rs2();
-        if (input == null || input == 0) return null;
-        // Isolate WAW: do not also introduce a read-after-write dependency.
-        if (waw && (Objects.equals(input, instruction.rs1())
-                || (instruction.hasArchitecturalRS2() && Objects.equals(input, instruction.rs2())))) return null;
-        // Use a real, otherwise unused destination on the independent side.
+        if (observation.name().startsWith("RAW_RS2_") && !consumer.hasArchitecturalRS2()) return null;
+        Integer dependent = waw ? consumer.rd()
+                : observation.name().startsWith("RAW_RS1_") ? consumer.rs1() : consumer.rs2();
+        if (dependent == null || dependent == 0) return null;
+        Integer otherSource = observation.name().startsWith("RAW_RS1_")
+                ? (consumer.hasArchitecturalRS2() ? consumer.rs2() : null) : consumer.rs1();
+        if (!waw && (Objects.equals(dependent, consumer.rd()) || Objects.equals(dependent, otherSource))) return null;
+        // A WAW test must not introduce RAW on the same register.
+        if (waw && (Objects.equals(dependent, consumer.rs1())
+                || (consumer.hasArchitecturalRS2() && Objects.equals(dependent, consumer.rs2())))) return null;
+
+        if (!types.contains(RISCV_TYPE.ADDI)) return null;
+        List<RISCV_TYPE> producers = Stream.of(RISCV_TYPE.ADD, RISCV_TYPE.ADDI, RISCV_TYPE.SUB, RISCV_TYPE.OR, RISCV_TYPE.ORI,
+                RISCV_TYPE.AND, RISCV_TYPE.ANDI, RISCV_TYPE.XOR, RISCV_TYPE.XORI, RISCV_TYPE.SLT,
+                RISCV_TYPE.SLTI, RISCV_TYPE.SLTU, RISCV_TYPE.SLTIU, RISCV_TYPE.SLL, RISCV_TYPE.SLLI,
+                RISCV_TYPE.SRL, RISCV_TYPE.SRLI, RISCV_TYPE.SRA, RISCV_TYPE.SRAI, RISCV_TYPE.MUL,
+                RISCV_TYPE.MULH, RISCV_TYPE.MULHSU, RISCV_TYPE.MULHU, RISCV_TYPE.DIV, RISCV_TYPE.DIVU,
+                RISCV_TYPE.REM, RISCV_TYPE.REMU, RISCV_TYPE.LB, RISCV_TYPE.LBU, RISCV_TYPE.LH,
+                RISCV_TYPE.LHU, RISCV_TYPE.LW)
+                .filter(types::contains)
+                .filter(t -> !RISCVInstruction.isLOAD(t) || types.contains(RISCV_TYPE.SW)).toList();
+        RISCV_TYPE producer = producers.get(r.nextInt(producers.size()));
+        boolean load = RISCVInstruction.isLOAD(producer);
+        boolean immediate = !load && producer.getFormat() == RISCV_FORMAT.ITYPE;
+        boolean shiftImmediate = producer == RISCV_TYPE.SLLI || producer == RISCV_TYPE.SRLI
+                || producer == RISCV_TYPE.SRAI;
+
         List<Integer> unused = new ArrayList<>();
         for (int register = 1; unused.size() < 3; register++) {
-            if (!Objects.equals(register, instruction.rs1()) && !Objects.equals(register, instruction.rs2())
-                    && !Objects.equals(register, instruction.rd())) unused.add(register);
+            if (!Objects.equals(register, consumer.rs1()) && !Objects.equals(register, consumer.rs2())
+                    && !Objects.equals(register, consumer.rd())) unused.add(register);
         }
-        int scratch = unused.get(0), source1 = unused.get(1), source2 = unused.get(2);
-        int distance = Character.digit(observation.name().charAt(observation.name().length() - 1), 10);
-        // Select only enabled instructions, including the shared setup requirements.
-        if (!types.contains(RISCV_TYPE.ADDI)) return null;
-        List<RISCV_TYPE> producers = Stream.of(RISCV_TYPE.ADD, RISCV_TYPE.LW, RISCV_TYPE.MUL, RISCV_TYPE.DIV)
-                .filter(types::contains)
-                .filter(type -> type != RISCV_TYPE.LW || types.contains(RISCV_TYPE.SW))
-                .toList();
-        if (producers.isEmpty()) return null;
-        RISCV_TYPE producer = producers.get(r.nextInt(producers.size()));
-        int value = switch (producer) {
-            case ADD -> 45;
-            case LW -> 0;
-            case MUL -> 126;
-            case DIV -> 14;
-            default -> throw new IllegalStateException("Unknown dependency producer");
+        int independent = unused.get(0), source1 = unused.get(1), source2 = unused.get(2);
+        int a = dependencyValue(), b = dependencyValue();
+        if (immediate) b = b << 20 >> 20; // Signed 12-bit instruction immediate.
+        if (shiftImmediate) b &= 31;
+        // Without LUI, a left-shift result must also fit the ADDI-only prefill.
+        if (!types.contains(RISCV_TYPE.LUI) && (producer == RISCV_TYPE.SLL || producer == RISCV_TYPE.SLLI)) b &= 3;
+        int result = switch (producer) {
+            case ADD, ADDI -> a + b;
+            case SUB -> a - b;
+            case OR, ORI -> a | b;
+            case AND, ANDI -> a & b;
+            case XOR, XORI -> a ^ b;
+            case SLT, SLTI -> a < b ? 1 : 0;
+            case SLTU, SLTIU -> Integer.compareUnsigned(a, b) < 0 ? 1 : 0;
+            case SLL, SLLI -> a << (b & 31);
+            case SRL, SRLI -> a >>> (b & 31);
+            case SRA, SRAI -> a >> (b & 31);
+            case MUL -> a * b;
+            case MULH -> (int) (((long) a * b) >> 32);
+            case MULHSU -> (int) (((long) a * Integer.toUnsignedLong(b)) >> 32);
+            case MULHU -> (int) ((Integer.toUnsignedLong(a) * Integer.toUnsignedLong(b)) >>> 32);
+            case DIV -> b == 0 ? -1 : a / b;
+            case DIVU -> b == 0 ? -1 : Integer.divideUnsigned(a, b);
+            case REM -> b == 0 ? a : a % b;
+            case REMU -> b == 0 ? a : Integer.remainderUnsigned(a, b);
+            case LB -> (byte) b;
+            case LBU -> b & 255;
+            case LH -> (short) b;
+            case LHU -> b & 65535;
+            case LW -> b;
+            default -> throw new IllegalStateException("Unexpected producer: " + producer);
         };
+
         List<RISCVInstruction> setup = new ArrayList<>();
-        setup.add(RISCVInstruction.ADDI(source1, 0, 42));
-        setup.add(RISCVInstruction.ADDI(source2, 0, 3));
-        setup.add(RISCVInstruction.ADDI(input, 0, value));
-        setup.add(RISCVInstruction.ADDI(scratch, 0, value));
-        if (producer == RISCV_TYPE.LW) setup.add(RISCVInstruction.SW(0, 0, 0));
-        setup.addAll(nopSequence(4));
-        List<RISCVInstruction> left = new ArrayList<>(setup);
-        List<RISCVInstruction> right = new ArrayList<>(setup);
-        for (int destination : new int[]{input, scratch}) {
-            RISCVInstruction write = switch (producer) {
-                case ADD -> RISCVInstruction.ADD(destination, source1, source2);
-                case LW -> RISCVInstruction.LW(destination, 0, 0);
-                case MUL -> RISCVInstruction.MUL(destination, source1, source2);
-                case DIV -> RISCVInstruction.DIV(destination, source1, source2);
-                default -> throw new IllegalStateException("Unknown dependency producer");
-            };
-            List<RISCVInstruction> program = destination == input ? left : right;
-            program.add(write);
-            program.addAll(nopSequence(distance - 1));
-            program.add(instruction);
+        setRegister(setup, source1, a);
+        setRegister(setup, source2, b);
+        setRegister(setup, dependent, result);
+        setRegister(setup, independent, result);
+        if (load) setup.add(RISCVInstruction.SW(0, source2, 0));
+        // Align the consumer through setup/immediate changes, never by inserting
+        // another writer between the producer and consumer.
+        boolean align = (!allow_misaligned_memory && RISCVInstruction.isMEM(consumer.type()))
+                || consumer.type() == RISCV_TYPE.JALR;
+        if (align) {
+            long imm = consumer.imm();
+            if (Objects.equals(consumer.rs1(), dependent)) {
+                imm = (imm & ~3L) | (-result & 3);
+            } else if (consumer.rs1() == 0) {
+                imm &= ~3L;
+            } else {
+                setRegister(setup, consumer.rs1(), (int) (-imm & 3));
+            }
+            consumer = new RISCVInstruction(consumer.type(), consumer.rd(), consumer.rs1(), consumer.rs2(), imm);
         }
+        setup.addAll(nopSequence(4));
+
+        RISCVInstruction write = load
+                ? new RISCVInstruction(producer, dependent, 0, null, 0L)
+                : immediate
+                ? RISCVInstruction.ITYPE(producer, dependent, source1, (long) b)
+                : RISCVInstruction.RTYPE(producer, dependent, source1, shiftImmediate ? b : source2);
+        int distance = Character.digit(observation.name().charAt(observation.name().length() - 1), 10);
+        List<RISCVInstruction> left = new ArrayList<>(setup), right = new ArrayList<>(setup);
+        left.add(write);
+        right.add(write.cloneAlteringRD(independent));
+        left.addAll(nopSequence(distance - 1));
+        right.addAll(nopSequence(distance - 1));
+        left.add(consumer);
+        right.add(consumer);
         return new Pair<>(left, right);
+    }
+
+    private int dependencyValue() {
+        // Without LUI, keep the entire setup representable with ADDI alone.
+        if (!types.contains(RISCV_TYPE.LUI)) return r.nextInt(32);
+        return switch (r.nextInt(8)) {
+            case 0 -> 0;
+            case 1 -> 1;
+            case 2 -> -1;
+            case 3 -> Integer.MIN_VALUE;
+            case 4 -> Integer.MAX_VALUE;
+            default -> r.nextInt();
+        };
+    }
+
+    private static void setRegister(List<RISCVInstruction> program, int register, int value) {
+        int low = value << 20 >> 20; // Signed 12-bit ADDI immediate.
+        if (value == low) {
+            program.add(RISCVInstruction.ADDI(register, 0, value));
+        } else {
+            program.add(RISCVInstruction.LUI(register, Integer.toUnsignedLong(value - low)));
+            program.add(RISCVInstruction.ADDI(register, register, low));
+        }
     }
 
     private Pair<List<RISCVInstruction>, List<RISCVInstruction>> alterObservation(RISCV_OBSERVATION_TYPE type, RISCVInstruction instruction) {

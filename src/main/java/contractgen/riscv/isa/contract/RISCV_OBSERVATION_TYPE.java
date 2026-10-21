@@ -169,6 +169,15 @@ public enum RISCV_OBSERVATION_TYPE implements ObservationType {
      * The severity of an observation type.
      */
     public final int value;
+
+    public boolean isDependency() {
+        return name().startsWith("RAW_") || name().startsWith("WAW_");
+    }
+
+    public int dependencyDistance() {
+        if (!isDependency()) throw new IllegalStateException("Not a dependency: " + this);
+        return Character.digit(name().charAt(name().length() - 1), 10);
+    }
     /**
      * The verilog encoding of an observation.
      */

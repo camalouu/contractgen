@@ -45,7 +45,14 @@ public final class RISCVTestCaseIO {
     }
 
     public static void write(Path output, List<TestCase> tests) throws IOException {
-        Files.writeString(output, toJSON(tests));
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        try (var writer = gson.newJsonWriter(Files.newBufferedWriter(output))) {
+            writer.beginArray();
+            for (TestCase test : tests) {
+                gson.toJson(serialize(test), SerializedTestCase.class, writer);
+            }
+            writer.endArray();
+        }
     }
 
     public static String toJSON(List<TestCase> tests) {

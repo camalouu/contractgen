@@ -47,13 +47,24 @@ use Spike's load/store implementation against the persistent data pages.
 
 ## Contract observations and attacker boundaries
 
-The atom vocabulary and comparison rules are unchanged: structural fields,
-register values, branches, dynamic dependency distances and instruction pairs
-retain their established definitions. Syntactic dependency comparisons continue
-to include x0. Architectural execution and register-value observations for shift
-immediates do not read the register numbered by the shift amount. Structural RS2
-and dependency atoms retain the historical five-bit-field convention; they are
-syntactic comparisons rather than a certification of physical pipeline hazards.
+Structural fields, register values, branches and instruction-pair observations
+retain their established definitions. Spike dependency evidence now uses atom
+schema `producer-dependencies-v1`, independently of execution model `rv32-v1`.
+A dependency atom includes the exact earlier writer and later instruction:
+`LW -> MUL: RAW_RS1_1`. It is a boolean which is false outside that instruction
+pair, and true when its register relation holds. Evidence records predicates
+whose values differ across executions, including changes of producer or consumer
+type when both executions have a register link. Selecting a pair predicate does
+not expose instruction presence when that predicate is false.
+
+Distances 1–4 count dynamically executed instructions, not cycles. RAW_RS1/RS2
+require an architectural source matching the earlier nonzero destination, with
+no intervening write to that register. WAW compares the nonzero destinations of
+the earlier and later writers at the stated distance; intervening writes do not
+remove this pairwise relation. Writes to x0 are excluded. Shift-immediate bits
+are not an architectural RS2 source and cannot produce RAW_RS2 atoms. Structural
+RS2 retains its historical five-bit-field convention. These relations describe
+architectural context; selecting an atom does not identify an internal RTL hazard.
 
 For `rv32-v1`, MEM_ADDR is the RV32 effective address, MEM_W_DATA is the source
 register value, and MEM_R_DATA contains the accessed bytes in their RV32 word
@@ -78,6 +89,44 @@ original testcase indices are preserved. Summaries count `Unsupported For Core`,
 and `<contract>.unsupported.json` lists excluded ordinals, case indices and reasons.
 A wholly unsupported nonempty set produces an explicit error instead of an empty
 contract. Unexpected reference failures or RTL errors still fail synthesis.
+
+## Controlled dependency generation
+
+RAW and WAW targets at distances 1–4 select enabled integer ALU producers:
+ADD/SUB, bitwise operations, comparisons and shifts (including immediate forms),
+plus MUL/MULH/MULHSU/MULHU and DIV/DIVU/REM/REMU when M is enabled. LB/LBU/LH/LHU/LW
+producers are included when SW is available to initialize their data. Loads read
+the controlled word at data address zero; byte/halfword results use the appropriate
+sign or zero extension. Control-flow producers are excluded. Immediates fit signed 12-bit encoding;
+shift immediates are 0–31. Operands mix
+random RV32 values with zero, one, minus one and signed extrema. Both sides
+prefill the dependent and independent destinations with the producer result, preserving
+architectural values while changing the destination register. Setup uses LUI/ADDI
+for full-width constants, or small operands if LUI is unavailable (left shifts
+are then limited so the prefill also fits ADDI). Targeting is
+skipped if ADDI is unavailable for setup. These generator changes alter seeded
+corpora, so retain saved testcase files for exact reproduction.
+Targets whose overlapping consumer operands/destination would toggle additional
+RAW/WAW relations are skipped, so the controlled pair isolates the selected link.
+
+Naturally aligned memory consumers and JALR targets are aligned through setup
+and immediate selection, without inserting an instruction between the intended
+producer and consumer. Saved target metadata retains the selected producer type.
+
+Native contracts include `atomSchema`; text contracts and signature reports print
+the producer as well as the consumer. Hashing, ordering, adaptive skipping and
+ILP variables use the complete identity. The ILP objectives are unchanged.
+Legacy RVFI extraction and its atom universe remain unchanged. The legacy Verilog
+monitor exporter rejects producer-specific contracts instead of dropping their
+conditions; these contracts are consumed by the Spike-backed JSON/text workflow.
+
+Old contract JSON without `atomSchema` is read as `legacy-v1`. Evaluation and
+contract extension reject mixed schemas. Re-run Spike over saved programs to
+obtain new evidence; adding a producer label to old signatures is insufficient.
+Existing RTL labels may be reused only for the same programs, architectural
+environment and attacker harness. Old native libraries are rejected explicitly;
+rebuild with `nix build .#spike`. `print_atoms` uses the new vocabulary by default;
+`--legacy-dependencies` prints the historical universe.
 
 ## Harness migration and historical reproduction
 

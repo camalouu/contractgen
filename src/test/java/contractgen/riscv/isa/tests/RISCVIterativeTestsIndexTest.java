@@ -5,8 +5,10 @@ import contractgen.riscv.isa.RISCV_SUBSET;
 import contractgen.riscv.isa.contract.RISCV_OBSERVATION_TYPE;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
 import java.util.EnumSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,6 +16,30 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class RISCVIterativeTestsIndexTest {
+
+    @Test
+    void streamedExportPreservesJsonFormatAndRoundTrips() throws Exception {
+        var generated = new RISCVIterativeTests(
+                EnumSet.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M),
+                EnumSet.allOf(RISCV_OBSERVATION_TYPE.class),
+                58L, 1, 64, false, false, 1, false, false, false, false);
+        List<TestCase> tests = RISCVTestCaseIO.collect(generated::getIterator, 1);
+        var output = Files.createTempFile("contractgen-streamed-export-", ".json");
+        try {
+            String expected = RISCVTestCaseIO.toJSON(tests);
+            RISCVTestCaseIO.write(output, tests);
+            assertEquals(expected, Files.readString(output));
+            var restored = RISCVTestCaseIO.read(output);
+            assertEquals(tests.stream().map(TestCase::getIndex).toList(),
+                    restored.stream().map(TestCase::getIndex).toList());
+            assertEquals(expected, RISCVTestCaseIO.toJSON(restored));
+            RISCVTestCaseIO.write(output, List.of());
+            assertEquals("[]", Files.readString(output));
+            assertTrue(RISCVTestCaseIO.read(output).isEmpty());
+        } finally {
+            Files.delete(output);
+        }
+    }
 
     @Test
     void assignsEveryIndexExactlyOnceAcrossThreadAndRepetitionBoundaries() {

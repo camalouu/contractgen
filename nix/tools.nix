@@ -33,7 +33,7 @@ let
     pname = "contract-spike";
     version = "28893f6";
     src = inputs.spike-src;
-    patches = [ ./patches/spike-execution-model.patch ];
+    patches = [ ./patches/spike-execution-model.patch ./patches/spike-dependencies.patch ];
     nativeBuildInputs = with pkgs; [ autoconf automake libtool pkg-config ];
     buildInputs = with pkgs; [ boost gmp dtc ];
     preConfigure = ''mkdir build; cd build; configureScript=../configure'';
@@ -53,6 +53,11 @@ let
         ${./tests/spike-execution-model.cpp} extension.o libspike_main.a libriscv.a \
         libdisasm.a libsoftfloat.a libfesvr.a libfdt.a -lpthread -o execution-model-test
       ./execution-model-test
+      $CXX -std=c++20 -O2 -UNDEBUG -iquote . -I.. -iquote ../spike_main \
+        -iquote ../riscv -iquote ../fesvr -iquote ../disasm -iquote ../softfloat -iquote ../fdt \
+        ${./tests/spike-dependencies.cpp} extension.o libspike_main.a libriscv.a \
+        libdisasm.a libsoftfloat.a libfesvr.a libfdt.a -lpthread -o dependency-atoms-test
+      ./dependency-atoms-test
       $CXX -std=c++20 -O2 -UNDEBUG -iquote . -I.. -iquote ../spike_main \
         -iquote ../riscv -iquote ../fesvr -iquote ../disasm -iquote ../softfloat -iquote ../fdt \
         ${./tests/rtl-reference-agreement.cpp} extension.o libspike_main.a libriscv.a \

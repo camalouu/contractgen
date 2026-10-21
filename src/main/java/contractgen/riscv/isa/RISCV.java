@@ -31,14 +31,32 @@ public class RISCV extends ISA {
      * @param testCases The test cases to be used for generation or evaluation.
      */
     public RISCV(Set<RISCV_OBSERVATION_TYPE> observations, Set<RISCV_SUBSET> isa, Updater updater, TestCases testCases) {
+        this(observations, isa, updater, testCases, false);
+    }
+
+    public RISCV(Set<RISCV_OBSERVATION_TYPE> observations, Set<RISCV_SUBSET> isa, Updater updater,
+                 TestCases testCases, boolean producerDependencies) {
         super(testCases);
         Set<RISCV_TYPE> types = isa.stream().flatMap(subset -> Arrays.stream(RISCV_TYPE.values()).filter(type -> type.getSubset() == subset)).collect(Collectors.toSet());
-        Set<Observation> atoms = 
-        types.stream()
-            .flatMap(type -> observations.stream().map(observation -> new RISCVObservation(type, observation)))
-            .filter(RISCVObservation::isApplicable)
-            .collect(Collectors.toSet());
-        contract = new RISCVContract(atoms, updater);
+        contract = new RISCVContract(atoms(types, observations, producerDependencies), updater,
+                producerDependencies ? RISCVObservation.DEPENDENCY_SCHEMA : RISCVObservation.LEGACY_SCHEMA);
+    }
+
+    public static Set<Observation> atoms(Set<RISCV_TYPE> types, Set<RISCV_OBSERVATION_TYPE> observations,
+                                         boolean producerDependencies) {
+        Set<Observation> atoms = new java.util.HashSet<>();
+        for (RISCV_TYPE type : types) for (RISCV_OBSERVATION_TYPE observation : observations) {
+            if (producerDependencies && observation.isDependency()) {
+                for (RISCV_TYPE producer : types) {
+                    var atom = new RISCVObservation(type, observation, producer);
+                    if (atom.isApplicable()) atoms.add(atom);
+                }
+            } else {
+                var atom = new RISCVObservation(type, observation);
+                if (atom.isApplicable()) atoms.add(atom);
+            }
+        }
+        return atoms;
     }
 
     @Override

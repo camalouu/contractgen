@@ -29,6 +29,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Tests cutoff filtering independently of a native attacker implementation. */
 class AdaptiveAttackerRunnerTest {
     @Test
+    void producerSpecificSignaturesDoNotSkipEachOthersRtlQueries() {
+        var load = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.LW);
+        var add = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.ADD);
+        var tests = List.of(test(0), test(1));
+        var spike = Map.of(0, new SpikeAtomClient.SpikeCaseAtoms(0, 0, Set.of(load), null),
+                1, new SpikeAtomClient.SpikeCaseAtoms(1, 1, Set.of(add), null));
+        var result = new AdaptiveAttackerRunner(Path.of("unused"), "mock", ignored ->
+                (t, cycles) -> t.getIndex() == 0 ? SIMULATION_RESULT.FAIL : SIMULATION_RESULT.SUCCESS,
+                false, 1, 1, true, true, true, false, ordinal -> true,
+                new AdaptiveAttackerRunner.Scheduling(AdaptiveAttackerRunner.Policy.GROUPED,
+                        AdaptiveAttackerRunner.Continuation.INPUT, 0), ignored -> {})
+                .run(tests, tests, spike);
+        assertEquals(2, result.uniqueSignatures());
+        assertEquals(2, result.stats().executed());
+        assertEquals(Set.of(load), result.results()[0].getDistinguishingObservations());
+        assertEquals(Set.of(add), result.results()[1].getDistinguishingObservations());
+        assertTrue(result.results()[0].isAdversaryDistinguishable());
+        assertFalse(result.results()[1].isAdversaryDistinguishable());
+    }
+    @Test
     void serialPoliciesPreserveSelectionButChangeQueryOrder() {
         int[] signatures = {0,0,1,1,1,2,2,2,0,1,2,0};
         var tests = new java.util.ArrayList<TestCase>();
@@ -52,6 +72,11 @@ class AdaptiveAttackerRunnerTest {
             };
             assertEquals(expected,observed.stream().map(AdaptiveAttackerRunner.Execution::ordinal).toList());
             assertEquals(8,result.stats().executed());
+            assertEquals(12, result.signatures().stream().mapToInt(SignatureReport.Entry::occurrences).sum());
+            assertEquals(8, result.signatures().stream().mapToInt(SignatureReport.Entry::executions).sum());
+            assertEquals(1, result.signatures().stream().mapToInt(SignatureReport.Entry::leaking).sum());
+            assertEquals(7, result.signatures().stream().mapToInt(SignatureReport.Entry::nonLeaking).sum());
+            assertEquals(4, result.signatures().stream().mapToInt(SignatureReport.Entry::skipped).sum());
             assertEquals(2,result.stats().skippedPositive());
             assertEquals(2,result.stats().skippedNegative());
             for (var r:result.results()) assertTrue(r != null);

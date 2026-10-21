@@ -85,6 +85,22 @@ class SynthesizeNewTest {
     }
 
     @Test
+    void signatureReportIsBesideSummaryAndCannotOverwriteInputs() {
+        assertEquals(Path.of("reports/signatures.txt"), ReplaySynthesizeSpike.signatureReportPath(
+                Path.of("output/contract.json"), Path.of("reports/summary.txt")));
+        assertEquals(Path.of("output/signatures.txt"), ReplaySynthesizeSpike.signatureReportPath(
+                Path.of("output/contract.json"), null));
+        assertThrows(IllegalArgumentException.class, () -> SynthesizeNew.resolveOutputs(null,
+                new File("contract.json"), new File("signatures.txt"), null));
+        assertThrows(IllegalArgumentException.class, () -> SynthesizeNew.resolveOutputs(null,
+                new File("contract.json"), new File("cases.json"), new File("signatures.txt")));
+        var options = new AdaptiveSchedulingOptions();
+        options.queryLog = new File("signatures.txt");
+        assertThrows(IllegalArgumentException.class, () -> options.validatePaths(
+                Path.of("contract.json"), Path.of("cases.json"), null));
+    }
+
+    @Test
     void derivesTestcasePathBesideContractOutput() {
         assertEquals(
                 Path.of("results/hazard3-testcases.json"),

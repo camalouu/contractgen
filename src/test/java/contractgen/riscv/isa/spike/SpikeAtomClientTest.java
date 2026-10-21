@@ -11,8 +11,28 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SpikeAtomClientTest {
+    @Test
+    void preservesDistinctProducersAndRetirementTimes() {
+        String json = """
+                {"atom_schema":"producer-dependencies-v1","cases":[{"ordinal":0,"case_index":0,"atoms":[
+                  {"type":"MUL","producer":"LW","observation":"RAW_RS1_1","first_retire":34},
+                  {"type":"MUL","producer":"ADD","observation":"RAW_RS1_1","first_retire":40}
+                ]}]}
+                """;
+        var result = SpikeAtomClient.parseResponse(json, EnumSet.allOf(RISCV_OBSERVATION_TYPE.class)).get(0);
+        var load = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.LW);
+        var add = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.ADD);
+        assertEquals(Set.of(load, add), result.atoms());
+        assertEquals(34, result.firstRetire(load).orElseThrow());
+        assertEquals(40, result.firstRetire(add).orElseThrow());
+        assertThrows(IllegalStateException.class, () -> SpikeAtomClient.parseResponse(
+                json.replace("\"producer\":\"LW\",", ""), EnumSet.allOf(RISCV_OBSERVATION_TYPE.class)));
+        assertThrows(IllegalStateException.class, () -> SpikeAtomClient.parseResponse(
+                json.replace("producer-dependencies-v1", "unknown"), EnumSet.allOf(RISCV_OBSERVATION_TYPE.class)));
+    }
     @Test
     void retainsEarliestRetirementForRepeatedAtom() {
         String json = """

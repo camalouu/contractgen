@@ -34,7 +34,7 @@ public class IBEXTest extends MARCH {
     protected String SIMULATION_PATH = contractgen.util.RuntimePaths.work("ibex-test/simulation/").toString() + "/";
 
     public IBEXTest(Updater updater, TestCases testCases, Set<RISCV_OBSERVATION_TYPE> allowed_observations, Set<RISCV_SUBSET> isa, boolean isSP) {
-        super(new RISCV(allowed_observations, isa, updater, testCases), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
+        super(new RISCV(allowed_observations, isa, updater, testCases, true), (path, adversaryDistinguishable, index) -> new RISCVTestResult(Set.of(), Set.of(), adversaryDistinguishable, index));
     }
 
     @Override

@@ -7,6 +7,7 @@ import contractgen.riscv.cva6.CVA6;
 import contractgen.riscv.cva6_test.CVA6Test;
 import contractgen.riscv.cva6_test.CVA6TestAttackerClient;
 import contractgen.riscv.AdaptiveAttackerRunner;
+import contractgen.riscv.SignatureReport;
 import contractgen.riscv.AttackerHarnessClient;
 import contractgen.riscv.SimpleAttackerHarnessClient;
 import contractgen.riscv.SimpleTestMARCH;
@@ -99,6 +100,7 @@ class AdaptiveSchedulingOptions {
         ExecutionMetadata.requireDistinctPaths(queryLog.toPath(), output, ExecutionMetadata.path(output),
                 input, input == null ? null : ExecutionMetadata.path(input),
                 summary == null ? null : summary.toPath(),
+                ReplaySynthesizeSpike.signatureReportPath(output, summary == null ? null : summary.toPath()),
                 output.resolveSibling(output.getFileName() + ".unsupported.json"));
     }
     QueryLog openLog() throws IOException { return new QueryLog(queryLog); }
@@ -333,7 +335,7 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"-o", "--output"}, description = "Contract output path (JSON). Required unless --output-dir is used.")
     File out;
 
-    @Option(names = {"--output-dir"}, description = "Write contract.json, testcases.json, and summary.txt into this directory.")
+    @Option(names = {"--output-dir"}, description = "Write contract.json, testcases.json, summary.txt, and signatures.txt into this directory.")
     File outputDir;
 
     @Option(names = {"--testcases-output"}, description = "Output path for the exact generated testcase set. Defaults to <output>-testcases.json.")
@@ -556,7 +558,8 @@ class SynthesizeNew implements Callable<Integer> {
     record OutputPaths(Path contract, Path testcases, Path summary) {
         OutputPaths {
             ExecutionMetadata.requireDistinctPaths(contract, ExecutionMetadata.path(contract),
-                    testcases, ExecutionMetadata.path(testcases), summary);
+                    testcases, ExecutionMetadata.path(testcases), summary,
+                    ReplaySynthesizeSpike.signatureReportPath(contract, summary));
         }
     }
 }
@@ -703,6 +706,7 @@ class Update implements Callable<Integer> {
             RISCVContract contract = RISCVContract.fromJSON(new FileReader(old_ctr));
             System.out.println(contract);
             RISCVContract results = RISCVContract.fromJSON(new FileReader(new_results));
+            contract.requireCompatible(results);
             for (TestResult res : results.getTestResults()) {
                 contract.add(res);
             }
@@ -753,6 +757,8 @@ class ILP implements Callable<Integer> {
 
 @Command(name = "print_atoms", description = "Print all applicable atoms.")
 class PrintAtoms implements Callable<Integer> {
+    @Option(names = "--legacy-dependencies", description = "Print the historical consumer-only dependency atoms")
+    boolean legacyDependencies;
 
     // select ISA
     @Option(names = {"-i", "--isa"}, required = true, description = "The ISA to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
@@ -766,8 +772,9 @@ class PrintAtoms implements Callable<Integer> {
     public Integer call() {
         List<RISCV_TYPE> types = Arrays.stream(RISCV_TYPE.values()).filter(type -> isa.contains(type.getSubset())).toList();
         List<RISCV_OBSERVATION_TYPE> observations = RISCV_OBSERVATION_TYPE.getGroups(template).stream().toList();
-        List<RISCVObservation> observationList = types.stream().map(type -> observations.stream().map(observation -> new RISCVObservation(type, observation)).toList()).flatMap(List::stream).toList();
-        observationList = observationList.stream().filter(RISCVObservation::isApplicable).toList();
+        List<RISCVObservation> observationList = contractgen.riscv.isa.RISCV.atoms(Set.copyOf(types),
+                Set.copyOf(observations), !legacyDependencies).stream().map(o -> (RISCVObservation) o)
+                .sorted(RISCVObservation.ORDER).toList();
         observationList.forEach(System.out::println);
         return 0;
     }
@@ -789,7 +796,10 @@ class Evaluate implements Callable<Integer> {
     public Integer call() {
         try {
             Files.createDirectories(out.toPath());
-            ContractGen.basicStats(RISCVContract.fromJSON(new FileReader(contract)), RISCVContract.fromJSON(new FileReader(evalset)).getTestResults(), "Statistics", out.getPath() + "/stats", null);
+            RISCVContract candidate = RISCVContract.fromJSON(new FileReader(contract));
+            RISCVContract evidence = RISCVContract.fromJSON(new FileReader(evalset));
+            candidate.requireCompatible(evidence);
+            ContractGen.basicStats(candidate, evidence.getTestResults(), "Statistics", out.getPath() + "/stats", null);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -1254,11 +1264,16 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     private String sourceDescription;
 
+    static Path signatureReportPath(Path output, Path summary) {
+        return (summary == null ? output : summary).resolveSibling("signatures.txt");
+    }
+
     @Override
     public Integer call() {
         List<TestCase> tests;
         ExecutionMetadata.requireDistinctPaths(testcases.toPath(), ExecutionMetadata.path(testcases.toPath()),
-                out.toPath(), ExecutionMetadata.path(out.toPath()), txt == null ? null : txt.toPath());
+                out.toPath(), ExecutionMetadata.path(out.toPath()), txt == null ? null : txt.toPath(),
+                signatureReportPath(out.toPath(), txt == null ? null : txt.toPath()));
         try {
             ExecutionMetadata.validate(testcases.toPath(), executionModel, spikeIsa);
             tests = RISCVTestCaseIO.read(testcases.toPath());
@@ -1271,6 +1286,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     Integer runTests(List<TestCase> tests, String sourceDescription) {
         scheduling.validate(!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets));
         scheduling.validatePaths(out.toPath(), testcases == null ? null : testcases.toPath(), txt);
+        ExecutionMetadata.requireDistinctPaths(signatureReportPath(out.toPath(), txt == null ? null : txt.toPath()),
+                out.toPath(), ExecutionMetadata.path(out.toPath()),
+                out.toPath().resolveSibling(out.getName() + ".unsupported.json"),
+                testcases == null ? null : testcases.toPath(),
+                testcases == null ? null : ExecutionMetadata.path(testcases.toPath()),
+                txt == null ? null : txt.toPath(),
+                scheduling.queryLog == null ? null : scheduling.queryLog.toPath());
         if (negativeSignatureThreshold < 0) {
             throw new IllegalArgumentException("--negative-signature-threshold must be >= 0.");
         }
@@ -1543,22 +1565,10 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                 sb.append("Summary:\n");
                 sb.append("\tGeneration Time: ").append(timeElapsed).append(" ms\n");
                 sb.append("\tProcessor: ").append(attackerHarnessName).append("\n");
-                sb.append("\tAtom Source: Spike\n");
-                sb.append("\tExecution Model: ").append(executionModel).append("\n");
-                sb.append("\tSpike ISA: ").append(spikeIsa).append("\n");
-                if (processor == ReplayAttackerHarness.ROCKET_TEST)
-                    sb.append('\t').append(RocketTestConfiguration.description()).append('\n');
-                if (processor == ReplayAttackerHarness.CV32E40S_TEST) {
-                    sb.append('\t').append(CV32E40STestAttackerClient.configuration(cv32e40sTiming)).append('\n');
-                }
                 sb.append("\tISA: ").append(isa).append("\n");
                 sb.append("\tTemplate: ").append(template).append("\n");
                 sb.append("\tCount: ").append(tests.size()).append("\n");
                 sb.append("\tThreads: ").append(threads).append("\n");
-                sb.append("\tScheduling Policy: ").append(scheduling.policy).append("\n");
-                sb.append("\tBreadth Continuation: ").append(scheduling.continuation).append("\n");
-                sb.append("\tScheduling Seed: ").append(scheduling.seed).append("\n");
-                sb.append("\tQuery Log: ").append(scheduling.queryLog).append("\n");
                 sb.append("\tSource: ").append(sourceDescription).append("\n");
                 sb.append("\tSkip ILP: ").append(skipILP).append("\n");
                 sb.append("\tSpike Time: ").append(spikeTime).append(" ms\n");
@@ -1584,6 +1594,12 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+        try {
+            SignatureReport.write(signatureReportPath(out.toPath(), txt == null ? null : txt.toPath()),
+                    adaptiveResult.signatures());
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot write signature report", e);
         }
         try (FileWriter writer = new FileWriter(out)) {
             contract.toJSON(writer);
@@ -1859,7 +1875,7 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
     }
 
     private static Set<RISCVObservation> observationSet() {
-        return new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+        return new java.util.TreeSet<>(RISCVObservation.ORDER);
     }
 
     private record AtomComparisonReport(

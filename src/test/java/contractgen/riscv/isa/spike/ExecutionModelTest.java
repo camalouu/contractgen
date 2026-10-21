@@ -23,7 +23,7 @@ class ExecutionModelTest {
         var array = com.google.gson.JsonParser.parseString("[" + cases + "]").getAsJsonArray();
         for (var raw : array) if (!raw.getAsJsonObject().has("requires_misaligned_data_access"))
             raw.getAsJsonObject().addProperty("requires_misaligned_data_access", false);
-        String canonical = "{\"execution_model\":\"" + model + "\",\"cases\":" + array + "}";
+        String canonical = "{\"atom_schema\":\"producer-dependencies-v1\",\"execution_model\":\"" + model + "\",\"cases\":" + array + "}";
         String code = "#include <stdlib.h>\n#include <string.h>\n"
                 + "char* contract_spike_atoms_json(const char*j,const char*i,int o){return strdup(\""
                 + legacy.replace("\"", "\\\"") + "\");}\n"

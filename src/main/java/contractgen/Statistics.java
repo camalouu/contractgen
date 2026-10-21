@@ -77,12 +77,10 @@ public class Statistics {
                 throw new RuntimeException(e);
             }
             Set<RISCV_TYPE> types = isa.stream().flatMap(subset -> Arrays.stream(RISCV_TYPE.values()).filter(type -> type.getSubset() == subset)).collect(Collectors.toSet());
-            Set<Observation> atoms = 
-            types.stream()
-                .flatMap(type -> allowed_observations.stream().map(observation -> new RISCVObservation(type, observation)))
-                .filter(RISCVObservation::isApplicable)
-                .collect(Collectors.toSet());
-            RISCVContract contract = new RISCVContract(atoms, new ILPUpdater());
+            reference.requireCompatible(evalset);
+            Set<Observation> atoms = contractgen.riscv.isa.RISCV.atoms(types, allowed_observations,
+                    reference.atomSchema().equals(RISCVObservation.DEPENDENCY_SCHEMA));
+            RISCVContract contract = new RISCVContract(atoms, new ILPUpdater(), reference.atomSchema());
             for (int i = 0; i < startingAt; i++) {
                 contract.add(reference.getTestResults().get(i));
             }

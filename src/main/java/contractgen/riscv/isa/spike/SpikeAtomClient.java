@@ -59,6 +59,8 @@ public final class SpikeAtomClient {
                 var response = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
                 if (response.has("error"))
                     throw new IllegalStateException("Spike atom library failed: " + response.get("error").getAsString());
+                if (!response.has("atom_schema") || !RISCVObservation.DEPENDENCY_SCHEMA.equals(response.get("atom_schema").getAsString()))
+                    throw new IllegalStateException("Spike library lacks producer-specific dependency atoms; rebuild with nix build .#spike and re-enter nix develop or update CONTRACT_SPIKE_LIB.");
                 if (!response.has("execution_model")
                         || !executionModel.toString().equals(response.get("execution_model").getAsString()))
                     throw new IllegalStateException("Spike returned an incompatible execution model");
@@ -83,16 +85,21 @@ public final class SpikeAtomClient {
         if (response.error != null) {
             throw new IllegalStateException("Spike atom library failed: " + response.error);
         }
+        if (response.atom_schema != null && !RISCVObservation.DEPENDENCY_SCHEMA.equals(response.atom_schema))
+            throw new IllegalStateException("Unsupported Spike atom schema: " + response.atom_schema);
         if (response.cases == null) {
             return List.of();
         }
+        if (response.atom_schema == null && response.cases.stream().filter(c -> c.atoms != null)
+                .flatMap(c -> c.atoms.stream()).anyMatch(a -> a.producer != null))
+            throw new IllegalStateException("Producer-specific evidence lacks its atom schema");
         return response.cases.stream()
                 .map(c -> atoms(c, allowed))
                 .toList();
     }
 
     private static SpikeCaseAtoms atoms(SpikeCase spikeCase, Set<RISCV_OBSERVATION_TYPE> allowed) {
-        Set<RISCVObservation> observations = new java.util.TreeSet<>(Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+        Set<RISCVObservation> observations = new java.util.TreeSet<>(RISCVObservation.ORDER);
         Map<RISCVObservation, Integer> firstRetire = new LinkedHashMap<>();
         Set<Pair<RISCV_TYPE, RISCV_TYPE>> instructionPairs = new java.util.TreeSet<>(instructionPairComparator());
         Map<Pair<RISCV_TYPE, RISCV_TYPE>, Integer> pairFirstRetire = new LinkedHashMap<>();
@@ -100,7 +107,12 @@ public final class SpikeAtomClient {
             for (SpikeAtom atom : spikeCase.atoms) {
                 RISCVObservation observation = new RISCVObservation(
                         RISCV_TYPE.valueOf(atom.type),
-                        RISCV_OBSERVATION_TYPE.valueOf(atom.observation));
+                        RISCV_OBSERVATION_TYPE.valueOf(atom.observation),
+                        atom.producer == null ? null : RISCV_TYPE.valueOf(atom.producer));
+                if (observation.observation().isDependency() && observation.producer() == null)
+                    throw new IllegalStateException("Legacy dependency evidence lacks a producer; re-extract with current Spike.");
+                if (!observation.isApplicable())
+                    throw new IllegalStateException("Spike returned an inapplicable atom: " + observation);
                 if (!allowed.contains(observation.observation())) {
                     continue;
                 }
@@ -136,7 +148,7 @@ public final class SpikeAtomClient {
     ) {
         public SpikeCaseAtoms {
             Set<RISCVObservation> sortedAtoms = new java.util.TreeSet<>(
-                    Comparator.comparing(RISCVObservation::type).thenComparing(RISCVObservation::observation));
+                    RISCVObservation.ORDER);
             sortedAtoms.addAll(atoms);
             atoms = Collections.unmodifiableSet(sortedAtoms);
             firstRetire = Collections.unmodifiableMap(new LinkedHashMap<>(firstRetire));
@@ -181,6 +193,7 @@ public final class SpikeAtomClient {
     }
 
     private static final class SpikeResponse {
+        String atom_schema;
         List<SpikeCase> cases;
         String error;
     }
@@ -196,6 +209,7 @@ public final class SpikeAtomClient {
 
     private static final class SpikeAtom {
         String type;
+        String producer;
         String observation;
         Integer first_retire;
     }
