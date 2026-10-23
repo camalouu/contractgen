@@ -48,14 +48,20 @@ use Spike's load/store implementation against the persistent data pages.
 ## Contract observations and attacker boundaries
 
 Structural fields, register values, branches and instruction-pair observations
-retain their established definitions. Spike dependency evidence now uses atom
-schema `producer-dependencies-v1`, independently of execution model `rv32-v1`.
-A dependency atom includes the exact earlier writer and later instruction:
-`LW -> MUL: RAW_RS1_1`. It is a boolean which is false outside that instruction
-pair, and true when its register relation holds. Evidence records predicates
-whose values differ across executions, including changes of producer or consumer
-type when both executions have a register link. Selecting a pair predicate does
-not expose instruction presence when that predicate is false.
+retain their established definitions. Spike dependency evidence uses atom schema
+`producer-attributed-dependencies-v1`, independently of execution model `rv32-v1`.
+A dependency atom names the earlier writer: `LW: RAW_RS1_1` is true when an LW
+writes a nonzero destination read through the later instruction's RS1 at distance
+1. The later instruction's opcode is not part of the predicate. RAW_RS2 refers
+to the later instruction's architectural RS2, and WAW to its destination.
+
+Spike compares these boolean predicates at each later instruction's retirement,
+before collecting evidence. For example, LW → MUL and LW → ADD with the same
+RAW_RS1_1 link do not distinguish that dependency atom. LW → MUL versus
+ADD → MUL distinguishes both LW.RAW_RS1_1 and ADD.RAW_RS1_1. Selecting a
+dependency predicate does not expose instruction presence when it is false.
+Its first-retirement metadata identifies the later instruction, when the relation
+can be observed, rather than the earlier producer.
 
 Distances 1–4 count dynamically executed instructions, not cycles. RAW_RS1/RS2
 require an architectural source matching the earlier nonzero destination, with
@@ -142,15 +148,20 @@ and immediate selection, without inserting an instruction between the intended
 producer and consumer. Saved target metadata retains the selected producer type.
 
 Native contracts include `atomSchema`; text contracts and signature reports print
-the producer as well as the consumer. Hashing, ordering, adaptive skipping and
-ILP variables use the complete identity. The ILP objectives are unchanged.
+only the producer and relation for dependency atoms. There is no producer ×
+consumer cross product in the native atom universe. Java's `producerDependency`
+marker distinguishes these predicates from historical consumer-attributed atoms;
+ordinary observations retain their original instruction scope. Hashing, ordering,
+adaptive skipping and ILP variables use this identity. The ILP objectives are unchanged.
 Legacy RVFI extraction and its atom universe remain unchanged. The legacy Verilog
-monitor exporter rejects producer-specific contracts instead of dropping their
+monitor exporter rejects producer-attributed contracts instead of dropping their
 conditions; these contracts are consumed by the Spike-backed JSON/text workflow.
 
 Old contract JSON without `atomSchema` is read as `legacy-v1`. Evaluation and
-contract extension reject mixed schemas. Re-run Spike over saved programs to
-obtain new evidence; adding a producer label to old signatures is insufficient.
+contract extension reject mixed schemas, including the earlier pair-based
+`producer-dependencies-v1`. Re-run Spike over saved programs to obtain new
+evidence; renaming or merging previously extracted pair atoms is insufficient,
+because predicates must be compared after dropping the consumer qualification.
 Existing RTL labels may be reused only for the same programs, architectural
 environment and attacker harness. Old native libraries are rejected explicitly;
 rebuild with `nix build .#spike`. `print_atoms` uses the new vocabulary by default;

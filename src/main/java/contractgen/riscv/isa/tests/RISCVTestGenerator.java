@@ -223,7 +223,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                             }
                         }
                     }
-                    targets.add(new RISCVObservation(type, observation, producer));
+                    targets.add(new RISCVObservation(producer == null ? type : producer, observation, observation.isDependency()));
                     
                     if (!allow_misaligned_memory && !observation.isDependency()) {
                         targetInstruction = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(

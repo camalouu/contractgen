@@ -29,9 +29,13 @@ int main() {
                              relation == "RAW_RS2" ? 20 : 23, {}};
         left.push_back(reader); right.push_back(reader);
         auto evidence = extract_evidence(samples(left), samples(right));
-        atom expected{"ADD", relation + "_" + std::to_string(distance), producer};
+        atom expected{producer, relation + "_" + std::to_string(distance)};
         assert(evidence.atoms.count(expected));
         assert(evidence.atoms.at(expected) == INIT_COUNT + distance + 1);
+        auto different_consumer = left;
+        different_consumer.back().type = "SUB";
+        auto opcode_only = extract_evidence(samples(left), samples(different_consumer));
+        assert(!opcode_only.atoms.count(expected));
         auto identical = extract_evidence(samples(left), samples(left));
         assert(identical.atoms.empty());
       }
@@ -41,16 +45,18 @@ int main() {
   auto lw_mul = samples({{"LW",20,0,{},0},{"MUL",21,20,23,{}}});
   auto add_mul = samples({{"ADD",20,2,3,{}},{"MUL",21,20,23,{}}});
   auto producer_swap = extract_evidence(lw_mul, add_mul);
-  assert(producer_swap.atoms.count(atom{"MUL","RAW_RS1_1","LW"}));
-  assert(producer_swap.atoms.count(atom{"MUL","RAW_RS1_1","ADD"}));
+  assert(producer_swap.atoms.count(atom{"LW","RAW_RS1_1"}));
+  assert(producer_swap.atoms.count(atom{"ADD","RAW_RS1_1"}));
   auto lw_add = samples({{"LW",20,0,{},0},{"ADD",21,20,23,{}}});
   auto consumer_swap = extract_evidence(lw_mul, lw_add);
-  assert(consumer_swap.atoms.count(atom{"MUL","RAW_RS1_1","LW"}));
-  assert(consumer_swap.atoms.count(atom{"ADD","RAW_RS1_1","LW"}));
+  assert(!consumer_swap.atoms.count(atom{"LW","RAW_RS1_1"}));
+  assert(dependency_atoms(lw_mul, lw_mul.size()-1).size() == 1);
+  assert(dependency_atoms(lw_add, lw_add.size()-1).count(atom{"LW","RAW_RS1_1"}));
   // Merely having RD/RS fields on one side is not a true dependency.
   auto unrelated = samples({{"LW",1,0,{},0},{"MUL",21,20,23,{}}});
   auto no_writer = samples({{"SW",{},0,2,0},{"MUL",21,20,23,{}}});
-  for (const auto& [a, _] : extract_evidence(unrelated,no_writer).atoms) assert(a.producer.empty());
+  for (const auto& [a, _] : extract_evidence(unrelated,no_writer).atoms)
+    assert(a.observation.find("RAW_") != 0 && a.observation.find("WAW_") != 0);
   // x0 writes and immediate shift bits are never register dependencies.
   auto zero = samples({{"ADD",0,2,3,{}},{"ADD",21,0,23,{}}});
   assert(dependency_atoms(zero, zero.size()-1).empty());
@@ -59,21 +65,22 @@ int main() {
   // An intervening write shadows the earlier RAW source, even if values match.
   auto shadow = samples({{"LW",20,0,{},0},{"ADD",20,2,3,{}},{"MUL",21,20,23,{}}});
   auto shadow_atoms = dependency_atoms(shadow, shadow.size()-1);
-  assert(!shadow_atoms.count(atom{"MUL","RAW_RS1_2","LW"}));
-  assert(shadow_atoms.count(atom{"MUL","RAW_RS1_1","ADD"}));
-  // Public JSON includes the full identity and rejects silent old/new mixing.
+  assert(!shadow_atoms.count(atom{"LW","RAW_RS1_2"}));
+  assert(shadow_atoms.count(atom{"ADD","RAW_RS1_1"}));
+  // Public JSON attributes dependencies to the producer, with a distinct schema.
   std::ostringstream out;
   write_atoms(out, producer_swap.atoms);
-  assert(out.str().find("\"producer\":\"LW\"") != std::string::npos);
+  assert(out.str().find("\"type\":\"LW\"") != std::string::npos);
+  assert(out.str().find("\"producer\"") == std::string::npos);
   std::ostringstream batch;
   write_results(batch, {});
-  assert(batch.str().find("\"atom_schema\":\"producer-dependencies-v1\"") != std::string::npos);
+  assert(batch.str().find("\"atom_schema\":\"producer-attributed-dependencies-v1\"") != std::string::npos);
   spike_runner runner("RV32IM");
   test_case tc;
   tc.max_instruction_count=3;
   tc.program1={{"LW",20,0,{},0},{"MUL",21,20,23,{}}};
   tc.program2={{"LW",1,0,{},0},{"MUL",21,20,23,{}}};
   auto executed=run_case(tc,runner);
-  assert(!executed.error && executed.atoms.count(atom{"MUL","RAW_RS1_1","LW"}));
-  std::cout << "Producer-specific dependency checks passed\n";
+  assert(!executed.error && executed.atoms.count(atom{"LW","RAW_RS1_1"}));
+  std::cout << "Producer-attributed dependency checks passed\n";
 }

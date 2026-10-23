@@ -26,7 +26,7 @@ public class RISCVContract extends Contract {
      * @param updater The updater to be used to compute the contract.
      */
     public RISCVContract(Set<Observation> allAtoms, Updater updater) {
-        this(allAtoms, updater, allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null)
+        this(allAtoms, updater, allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producerDependency())
                 ? RISCVObservation.DEPENDENCY_SCHEMA : RISCVObservation.LEGACY_SCHEMA);
     }
 
@@ -41,7 +41,7 @@ public class RISCVContract extends Contract {
      */
     public RISCVContract(Set<Observation> allAtoms, List<TestResult> initialResults, Updater updater) {
         super(allAtoms, initialResults, updater);
-        this.atomSchema = allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null)
+        this.atomSchema = allAtoms.stream().anyMatch(o -> o instanceof RISCVObservation r && r.producerDependency())
                 ? RISCVObservation.DEPENDENCY_SCHEMA : RISCVObservation.LEGACY_SCHEMA;
     }
 
@@ -60,7 +60,7 @@ public class RISCVContract extends Contract {
         for (Observation atom : result.getDistinguishingObservations()) {
             var r = (RISCVObservation) atom;
             if (r.observation().isDependency()
-                    && (r.producer() != null) != atomSchema().equals(RISCVObservation.DEPENDENCY_SCHEMA))
+                    && r.producerDependency() != atomSchema().equals(RISCVObservation.DEPENDENCY_SCHEMA))
                 throw new IllegalArgumentException("Dependency evidence does not match atom schema " + atomSchema());
         }
         super.add(result);
@@ -76,7 +76,7 @@ public class RISCVContract extends Contract {
         atoms.forEach(atom -> {
             var r = (RISCVObservation) atom;
             if (r.observation().isDependency()
-                    && (r.producer() != null) != schema.equals(RISCVObservation.DEPENDENCY_SCHEMA))
+                    && r.producerDependency() != schema.equals(RISCVObservation.DEPENDENCY_SCHEMA))
                 throw new JsonParseException("Dependency atom does not match schema " + schema + ": " + r);
         });
         return contract;
@@ -110,8 +110,8 @@ public class RISCVContract extends Contract {
 
     @Override
     public String printContract() {
-        if (getCurrentContract().stream().anyMatch(o -> o instanceof RISCVObservation r && r.producer() != null))
-            throw new UnsupportedOperationException("Producer-specific dependencies cannot be exported into the legacy RVFI contract monitor; use the JSON/text contract with the Spike pipeline.");
+        if (getCurrentContract().stream().anyMatch(o -> o instanceof RISCVObservation r && r.producerDependency()))
+            throw new UnsupportedOperationException("Producer-attributed dependencies cannot be exported into the legacy RVFI contract monitor; use the JSON/text contract with the Spike pipeline.");
         Map<RISCV_TYPE, List<RISCVObservation>> observations_per_type =
                 getCurrentContract().stream().map(obs -> (RISCVObservation) obs).collect(Collectors.groupingBy(RISCVObservation::type));
 
@@ -221,9 +221,11 @@ public class RISCVContract extends Contract {
             Gson gson = builder.create();
             JsonElement jsonType = jsonObject.get("type");
             JsonElement jsonObservation = jsonObject.get("observation");
+            if (jsonObject.has("producer"))
+                throw new JsonParseException("Pair-based dependency evidence must be re-extracted with current Spike");
             return new RISCVObservation(gson.fromJson(jsonType, RISCV_TYPE.class),
                     gson.fromJson(jsonObservation, RISCV_OBSERVATION_TYPE.class),
-                    gson.fromJson(jsonObject.get("producer"), RISCV_TYPE.class));
+                    jsonObject.has("producerDependency") && jsonObject.get("producerDependency").getAsBoolean());
         }
     }
 

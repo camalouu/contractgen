@@ -30,8 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AdaptiveAttackerRunnerTest {
     @Test
     void producerSpecificSignaturesDoNotSkipEachOthersRtlQueries() {
-        var load = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.LW);
-        var add = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.ADD);
+        var load = new RISCVObservation(RISCV_TYPE.LW, RISCV_OBSERVATION_TYPE.RAW_RS1_1, true);
+        var add = new RISCVObservation(RISCV_TYPE.ADD, RISCV_OBSERVATION_TYPE.RAW_RS1_1, true);
         var tests = List.of(test(0), test(1));
         var spike = Map.of(0, new SpikeAtomClient.SpikeCaseAtoms(0, 0, Set.of(load), null),
                 1, new SpikeAtomClient.SpikeCaseAtoms(1, 1, Set.of(add), null));

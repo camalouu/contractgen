@@ -68,7 +68,7 @@ public final class SpikeAtomClient {
                 if (response.has("error"))
                     throw new IllegalStateException("Spike atom library failed: " + response.get("error").getAsString());
                 if (!response.has("atom_schema") || !RISCVObservation.DEPENDENCY_SCHEMA.equals(response.get("atom_schema").getAsString()))
-                    throw new IllegalStateException("Spike library lacks producer-specific dependency atoms; rebuild with nix build .#spike and re-enter nix develop or update CONTRACT_SPIKE_LIB.");
+                    throw new IllegalStateException("Spike library lacks producer-attributed dependency atoms; rebuild with nix build .#spike and re-enter nix develop or update CONTRACT_SPIKE_LIB.");
                 if (!response.has("execution_model")
                         || !executionModel.toString().equals(response.get("execution_model").getAsString()))
                     throw new IllegalStateException("Spike returned an incompatible execution model");
@@ -98,9 +98,12 @@ public final class SpikeAtomClient {
         if (response.cases == null) {
             return List.of();
         }
-        if (response.atom_schema == null && response.cases.stream().filter(c -> c.atoms != null)
+        if (response.cases.stream().filter(c -> c.atoms != null)
                 .flatMap(c -> c.atoms.stream()).anyMatch(a -> a.producer != null))
-            throw new IllegalStateException("Producer-specific evidence lacks its atom schema");
+            throw new IllegalStateException("Pair-based dependency evidence must be re-extracted with current Spike");
+        if (response.atom_schema == null && response.cases.stream().filter(c -> c.atoms != null)
+                .flatMap(c -> c.atoms.stream()).anyMatch(a -> RISCV_OBSERVATION_TYPE.valueOf(a.observation).isDependency()))
+            throw new IllegalStateException("Dependency evidence lacks its atom schema");
         return response.cases.stream()
                 .map(c -> atoms(c, allowed))
                 .toList();
@@ -116,9 +119,7 @@ public final class SpikeAtomClient {
                 RISCVObservation observation = new RISCVObservation(
                         RISCV_TYPE.valueOf(atom.type),
                         RISCV_OBSERVATION_TYPE.valueOf(atom.observation),
-                        atom.producer == null ? null : RISCV_TYPE.valueOf(atom.producer));
-                if (observation.observation().isDependency() && observation.producer() == null)
-                    throw new IllegalStateException("Legacy dependency evidence lacks a producer; re-extract with current Spike.");
+                        RISCV_OBSERVATION_TYPE.valueOf(atom.observation).isDependency());
                 if (!observation.isApplicable())
                     throw new IllegalStateException("Spike returned an inapplicable atom: " + observation);
                 if (!allowed.contains(observation.observation())) {

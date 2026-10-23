@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class SignatureReportTest {
     @Test
     void reportsProducerSpecificSignaturesSeparately() throws Exception {
-        var load = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.LW);
-        var add = new RISCVObservation(RISCV_TYPE.MUL, RISCV_OBSERVATION_TYPE.RAW_RS1_1, RISCV_TYPE.ADD);
+        var load = new RISCVObservation(RISCV_TYPE.LW, RISCV_OBSERVATION_TYPE.RAW_RS1_1, true);
+        var add = new RISCVObservation(RISCV_TYPE.ADD, RISCV_OBSERVATION_TYPE.RAW_RS1_1, true);
         var spike = Map.of(0, new SpikeAtomClient.SpikeCaseAtoms(0, 0, Set.of(load), null),
                 1, new SpikeAtomClient.SpikeCaseAtoms(1, 1, Set.of(add), null));
         var report = SignatureReport.collect(2, spike, i -> true, new SignatureReport.Outcome[]{
@@ -25,8 +25,8 @@ class SignatureReportTest {
         try {
             SignatureReport.write(path, report);
             String text = Files.readString(path);
-            assertTrue(text.contains("LW -> MUL.RAW_RS1_1"));
-            assertTrue(text.contains("ADD -> MUL.RAW_RS1_1"));
+            assertTrue(text.contains("LW.RAW_RS1_1"));
+            assertTrue(text.contains("ADD.RAW_RS1_1"));
             assertTrue(text.contains("Mixed: 0"));
         } finally { Files.delete(path); }
     }

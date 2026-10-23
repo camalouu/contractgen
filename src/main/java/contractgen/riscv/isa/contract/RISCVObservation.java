@@ -10,35 +10,37 @@ import java.util.Comparator;
 import java.util.Objects;
 
 /**
- * An onservation for the RISC-V ISA.
+ * An observation for the RISC-V ISA.
  *
  * @param type        The type of instruction this observation should be associated to.
  * @param observation The observation type.
+ * @param producerDependency Whether type names the earlier writer instead of the current instruction.
+ *                           False preserves the legacy RVFI dependency semantics.
  */
 public record RISCVObservation(RISCV_TYPE type, RISCV_OBSERVATION_TYPE observation,
-                               RISCV_TYPE producer) implements Observation {
-    public static final String DEPENDENCY_SCHEMA = "producer-dependencies-v1";
+                               boolean producerDependency) implements Observation {
+    public static final String DEPENDENCY_SCHEMA = "producer-attributed-dependencies-v1";
     public static final String LEGACY_SCHEMA = "legacy-v1";
     public static final Comparator<RISCVObservation> ORDER = Comparator.comparing(RISCVObservation::type)
             .thenComparing(RISCVObservation::observation)
-            .thenComparing(RISCVObservation::producer, Comparator.nullsFirst(Comparator.naturalOrder()));
+            .thenComparing(RISCVObservation::producerDependency);
 
     public RISCVObservation(RISCV_TYPE type, RISCV_OBSERVATION_TYPE observation) {
-        this(type, observation, null);
+        this(type, observation, false);
     }
 
     public RISCVObservation {
         Objects.requireNonNull(type);
         Objects.requireNonNull(observation);
-        if (producer != null && !observation.isDependency())
-            throw new IllegalArgumentException("Only dependency atoms can specify a producer");
+        if (producerDependency && !observation.isDependency())
+            throw new IllegalArgumentException("Only dependency atoms can use producer attribution");
     }
 
     @Override
-    public boolean isTypeScoped() { return producer == null; }
+    public boolean isTypeScoped() { return !producerDependency; }
 
     public String name() {
-        return (producer == null ? "" : producer + " -> ") + type + "." + observation;
+        return type + "." + observation;
     }
 
     @Override
@@ -59,7 +61,7 @@ public record RISCVObservation(RISCV_TYPE type, RISCV_OBSERVATION_TYPE observati
     @Override
     public boolean matchExceptType(Observation observation) {
         return observation instanceof RISCVObservation other
-                && other.observation == this.observation && other.producer == this.producer;
+                && other.observation == this.observation && other.producerDependency == this.producerDependency;
     }
 
     @Override
@@ -67,19 +69,17 @@ public record RISCVObservation(RISCV_TYPE type, RISCV_OBSERVATION_TYPE observati
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         RISCVObservation that = (RISCVObservation) o;
-        return type == that.type && observation == that.observation && producer == that.producer;
+        return type == that.type && observation == that.observation && producerDependency == that.producerDependency;
     }
 
     @Override
     public String toString() {
-        return "\t\t" + (producer == null ? "" : producer + " -> ") + type + ": " + observation;
+        return "\t\t" + type + ": " + observation;
     }
 
     @Override
     public boolean isApplicable() {
-        if (producer != null && !RISCVInstruction.hasRD(producer)) return false;
-        if (producer != null && observation.name().startsWith("RAW_RS2_"))
-            return RISCVInstruction.hasArchitecturalRS2(type);
+        if (producerDependency) return RISCVInstruction.hasRD(type);
         return switch (observation) {
             case FORMAT, OPCODE -> true;
             case FUNCT3 -> type.hasFunct3();

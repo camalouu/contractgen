@@ -47,10 +47,8 @@ public class RISCV extends ISA {
         Set<Observation> atoms = new java.util.HashSet<>();
         for (RISCV_TYPE type : types) for (RISCV_OBSERVATION_TYPE observation : observations) {
             if (producerDependencies && observation.isDependency()) {
-                for (RISCV_TYPE producer : types) {
-                    var atom = new RISCVObservation(type, observation, producer);
-                    if (atom.isApplicable()) atoms.add(atom);
-                }
+                var atom = new RISCVObservation(type, observation, true);
+                if (atom.isApplicable()) atoms.add(atom);
             } else {
                 var atom = new RISCVObservation(type, observation);
                 if (atom.isApplicable()) atoms.add(atom);

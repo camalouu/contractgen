@@ -8,20 +8,7 @@
  #include <cstdint>
  #include <cstdlib>
  #include <fstream>
-@@ -730,10 +731,11 @@
- struct atom {
-   std::string type;
-   std::string observation;
-+  std::string producer; // Empty for ordinary atoms.
- 
-   bool operator<(const atom& other) const
-   {
--    return std::tie(type, observation) < std::tie(other.type, other.observation);
-+    return std::tie(type, observation, producer) < std::tie(other.type, other.observation, other.producer);
-   }
- };
- 
-@@ -812,24 +814,31 @@
+@@ -826,24 +827,30 @@
                  floor_log2_32(v1), floor_log2_32(v2));
  }
  
@@ -43,9 +30,8 @@
 -  } else if (!has1 && has2) {
 -    atoms.insert({i2.type, observation});
 -  }
-+// Qualified dependencies are booleans, false outside their instruction pair.
-+// Comparing the true predicates also catches different producers/consumers
-+// when both executions have a register link.
++// Producer-attributed booleans ignore the later instruction opcode.
++// Compare these predicates before collecting evidence, not pair names afterwards.
 +std::set<atom> dependency_atoms(const std::vector<sample>& trace, size_t idx)
 +{
 +  std::set<atom> out;
@@ -61,7 +47,7 @@
 +    const auto suffix = "_" + std::to_string(distance);
 +    auto add = [&](std::optional<uint32_t> reg, const std::string& relation, bool raw) {
 +      if (reg && *reg == *producer.rd && (!raw || !overwritten))
-+        out.insert({consumer.type, relation + suffix, producer.type});
++        out.insert({producer.type, relation + suffix});
 +    };
 +    add(consumer.rs1, "RAW_RS1", true);
 +    add(is_shift_imm(consumer) ? std::nullopt : consumer.rs2, "RAW_RS2", true);
@@ -71,7 +57,7 @@
  }
  
  extracted_evidence extract_evidence(const std::vector<sample>& left, const std::vector<sample>& right)
-@@ -913,15 +922,11 @@
+@@ -936,15 +943,11 @@
      compare_value(atoms, i1, i2, "NEW_PC", is_control(i1), is_control(i2),
                    left[idx].next_pc, right[idx].next_pc);
  
@@ -92,32 +78,21 @@
  
      for (const auto& observed : atoms)
        evidence.atoms.emplace(observed, retire);
-@@ -990,7 +995,9 @@
-     first = false;
-     out << "{\"type\":\"" << json_escape(a.type) << "\",\"observation\":\""
-         << json_escape(a.observation) << "\",\"first_retire\":"
--        << first_retire << "}";
-+        << first_retire;
-+    if (!a.producer.empty()) out << ",\"producer\":\"" << json_escape(a.producer) << "\"";
-+    out << "}";
-   }
-   out << "]";
- }
-@@ -1013,7 +1020,7 @@
+@@ -1036,7 +1039,7 @@
  void write_result(std::ostream& out, const case_result& result,
                    execution_model model = execution_model::rv32_v1)
  {
 -  out << "{\"structural_predicates_version\":1,";
-+  out << "{\"atom_schema\":\"producer-dependencies-v1\",\"structural_predicates_version\":1,";
++  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,";
    if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
    out << "\"ordinal\":" << result.ordinal
        << ",\"case_index\":" << result.index << ",\"atoms\":";
-@@ -1033,7 +1040,7 @@
+@@ -1056,7 +1059,7 @@
    size_t failed = 0;
    for (const auto& result : results)
      if (result.error) failed++;
 -  out << "{\"structural_predicates_version\":1,";
-+  out << "{\"atom_schema\":\"producer-dependencies-v1\",\"structural_predicates_version\":1,";
++  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,";
    if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
    out << "\"cases\":[";
    for (size_t i = 0; i < results.size(); i++) {
