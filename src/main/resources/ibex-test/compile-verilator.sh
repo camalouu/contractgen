@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+VARIANT="${3:-SMALL}"
+case "$VARIANT" in
+    ""|SMALL) VARIANT=SMALL; ATOM=ibex_test; VARIANT_FLAGS="" ;;
+    MULT_DIV) ATOM=ibex_mult_div_test; VARIANT_FLAGS="-DIBEX_TEST_MULT_DIV" ;;
+    CACHE) ATOM=ibex_cache_test; VARIANT_FLAGS="-DIBEX_TEST_CACHE" ;;
+    *) echo "Unknown Ibex variant: $VARIANT" >&2; exit 1 ;;
+esac
 cd "$1" || exit
 SOURCE_DIR="$PWD"
 PROJECT_RESOURCE_DIR="${CONTRACT_IBEX_TEST_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/ibex-test}"
@@ -86,7 +93,7 @@ cd "$LR_VERIF_OUT_DIR"/ || exit
 # iverilog -o ibex *.v
 
 VERILOG_SOURCES="atk.sv clk_sync.sv control.sv data_mem.sv ibex_alu.v ibex_branch_predict.v ibex_compressed_decoder.v ibex_controller.v ibex_core.v ibex_counter.v ibex_cs_registers.v ibex_csr.v ibex_decoder.v ibex_dummy_instr.v ibex_ex_block.v ibex_fetch_fifo.v ibex_icache.v ibex_id_stage.v ibex_if_stage.v ibex_load_store_unit.v ibex_multdiv_fast.v ibex_multdiv_slow.v ibex_pmp.v ibex_prefetch_buffer.v ibex_register_file_ff.v ibex_wb_stage.v instr_mem.sv tc_clk_gating.sv top.sv"
-VERILATOR_FLAGS="-DUSEVERILATOR -DRVFI -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN --top-module top"
+VERILATOR_FLAGS="$VARIANT_FLAGS -DUSEVERILATOR -DRVFI -Wno-UNOPTFLAT -Wno-INITIALDLY -Wno-LATCH -Wno-COMBDLY -Wno-STMTDLY -Wno-WIDTH -Wno-PINMISSING -Wno-LITENDIAN --top-module top"
 
 # Compatibility executable used by the existing file-based Java harness.
 # It reads init_*.dat/memory_*.dat/count.dat in C++ instead of using $readmemh.
@@ -96,7 +103,7 @@ cp obj_dir/Vtop ibex
 
 # Batched shared library used by the new Java fast path.
 verilator --cc $VERILATOR_FLAGS --Mdir obj_dir_shared --exe ibex_test_runtime.cpp ibex_test_shared.cpp \
-  -CFLAGS "-fPIC" -LDFLAGS "-shared -fPIC" -o libcontract_ibex_test_attacker.so $VERILOG_SOURCES
-make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared/ -f Vtop.mk libcontract_ibex_test_attacker.so
-cp obj_dir_shared/libcontract_ibex_test_attacker.so libcontract_ibex_test_attacker.so
-test -f libcontract_ibex_test_attacker.so
+  -CFLAGS "-fPIC" -LDFLAGS "-shared -fPIC" -o libcontract_${ATOM}_attacker.so $VERILOG_SOURCES
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C obj_dir_shared/ -f Vtop.mk libcontract_${ATOM}_attacker.so
+cp obj_dir_shared/libcontract_${ATOM}_attacker.so libcontract_${ATOM}_attacker.so
+test -f libcontract_${ATOM}_attacker.so

@@ -37,7 +37,7 @@ small attacker-harness synthesis run is:
 
 ```sh
 nix run . -- synth_new \
-  --processor IBEX_TEST \
+  --processor IBEX_SMALL_TEST \
   --isa BASE,M \
   --contract BASE,ALIGNED,BRANCH,DEPENDENCIES,VALUE \
   -n 100 -t 8 -s 35 \
@@ -124,9 +124,10 @@ nix build .#cva6-verilog
 nix flake check
 ```
 
-The nine attacker packages are `attacker-ibex`, `attacker-cva6`,
-`attacker-hazard3`, `attacker-proteus`, `attacker-sodor-2`,
-`attacker-darkriscv-2`, `attacker-fwrisc`, `attacker-cv32e40p`, and
+The native attacker packages include `attacker-ibex`, `attacker-cva6`,
+`attacker-hazard3`, `attacker-proteus`, `attacker-sodor-2`, `attacker-sodor-5`,
+`attacker-ibex-small`, `attacker-ibex-mult-div`, `attacker-ibex-cache`,
+`attacker-darkriscv-2`, `attacker-darkriscv-3`, `attacker-fwrisc`, `attacker-cv32e40p`, and
 `attacker-cv32e40s`. RTL regeneration produces store artifacts; copying one
 back into `src/main/resources` is an explicit review step. See
 [`nix/README.md`](nix/README.md) for package and contributor details.
@@ -149,3 +150,8 @@ Support for a new microarchitecture requires only a few steps:
 
 This project was used in the paper "Synthesizing Hardware-Software Leakage Contracts for RISC-V Open-Source Processors"
 by Gideon Mohr, Marco Guarnieri and Jan Reineke presented at DATE 2024.
+
+Native Ibex variants use the rewrite names `IBEX_SMALL_TEST`,
+`IBEX_MULT_DIV_TEST`, and `IBEX_CACHE_TEST`; `IBEX_TEST` remains a small-variant
+alias. `SODOR_5_TEST` and `DARKRISCV_3_TEST` complement the existing two-stage
+native variants. See [native variant configurations and commands](docs/NATIVE_VARIANTS.md).

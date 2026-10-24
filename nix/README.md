@@ -7,7 +7,7 @@ Java dependency versions and Maven plugin versions are defined in `pom.xml`.
 nix build
 nix run . -- --help
 nix develop
-nix build .#attacker-ibex
+nix build .#attacker-ibex-small .#attacker-ibex-mult-div .#attacker-ibex-cache
 nix build .#spike
 nix flake check
 ```
@@ -46,7 +46,7 @@ never modify the Nix store.
 ## Validation
 
 `nix flake check` runs Java tests, CLI help, a native OR-Tools solve, parallel
-Spike extraction, all ten attacker harnesses, deterministic synthesis/replay
+Spike extraction, all native attacker variants, deterministic synthesis/replay
 workflows, both CV32E40S timing settings, the legacy Icarus and Verilator
 matrices, and formal BMC/cover checks. RTL regeneration remains available as
 the separate `proteus-rtl` and `cva6-verilog` package builds because those are

@@ -22,6 +22,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 public final class SimpleTestMARCH extends IBEXTest {
     private final String resourceName;
     private final String displayName;
+    private final String variant;
 
     public SimpleTestMARCH(
             Updater updater,
@@ -31,12 +32,20 @@ public final class SimpleTestMARCH extends IBEXTest {
             String resourceName,
             String displayName
     ) {
+        this(updater, testCases, allowedObservations, isa, resourceName, displayName, null);
+    }
+
+    public SimpleTestMARCH(Updater updater, TestCases testCases,
+            Set<RISCV_OBSERVATION_TYPE> allowedObservations, Set<RISCV_SUBSET> isa,
+            String resourceName, String displayName, String variant) {
         super(updater, testCases, allowedObservations, isa, false);
         this.resourceName = resourceName;
         this.displayName = displayName;
-        BASE_PATH = contractgen.util.RuntimePaths.work(resourceName + "/generated").toString() + "/";
-        COMPILATION_PATH = contractgen.util.RuntimePaths.work(resourceName + "/compiled").toString() + "/";
-        SIMULATION_PATH = contractgen.util.RuntimePaths.work(resourceName + "/simulation").toString() + "/";
+        this.variant = variant;
+        String workName = resourceName + (variant == null ? "" : "-" + variant.toLowerCase(java.util.Locale.ROOT));
+        BASE_PATH = contractgen.util.RuntimePaths.work(workName + "/generated").toString() + "/";
+        COMPILATION_PATH = contractgen.util.RuntimePaths.work(workName + "/compiled").toString() + "/";
+        SIMULATION_PATH = contractgen.util.RuntimePaths.work(workName + "/simulation").toString() + "/";
     }
 
     @Override
@@ -51,8 +60,10 @@ public final class SimpleTestMARCH extends IBEXTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        var command = new java.util.ArrayList<>(java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH));
+        if (variant != null) command.add(variant);
         String output = runScript(
-                java.util.List.of("bash", BASE_PATH + "compile-verilator.sh", BASE_PATH, COMPILATION_PATH), java.nio.file.Path.of(BASE_PATH),
+                command, java.nio.file.Path.of(BASE_PATH),
                 true,
                 timeout);
         if (output == null || output.contains("Process exited with code")) {

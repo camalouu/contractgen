@@ -119,6 +119,11 @@ IbexTestRunResult contract_ibex_run_case(const IbexTestCaseImage& test_case, int
     IbexTestRunResult result;
     result.ordinal = test_case.ordinal;
     result.case_index = test_case.case_index;
+    if (test_case.max_instr_count < 31) {
+        result.status = IbexTestStatus::Error;
+        result.error = "Invalid retirement bound";
+        return result;
+    }
     const SingleRunResult initial = run_once(test_case, test_case.max_instr_count, max_cycles);
     result.status = initial.status;
     result.attacker_distinguishable = result.status == IbexTestStatus::Fail;

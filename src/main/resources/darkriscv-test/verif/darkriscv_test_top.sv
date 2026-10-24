@@ -24,7 +24,19 @@ module darkriscv_test_top (
         actual_rd_2 <= paired_darkriscv.core_2.AUIPC || paired_darkriscv.core_2.JAL || paired_darkriscv.core_2.JALR || paired_darkriscv.core_2.LUI || paired_darkriscv.core_2.LCC || paired_darkriscv.core_2.MCC || paired_darkriscv.core_2.RCC ? paired_darkriscv.core_2.DPTR : 0;
     end
     always @(negedge paired_darkriscv.clock_1) if (paired_darkriscv.retire_1)
-        contract_reference_retire(1,paired_darkriscv.trace_pc_1,actual_instruction_1,actual_rd_1,paired_darkriscv.core_1.REG1[actual_rd_1],0);
+        contract_reference_retire(1,paired_darkriscv.trace_pc_1,actual_instruction_1,actual_rd_1,
+`ifdef DARKRISCV_THREE_STAGE
+            paired_darkriscv.core_1.REG1[(31-actual_rd_1)*32 +: 32]
+`else
+            paired_darkriscv.core_1.REG1[actual_rd_1]
+`endif
+,0);
     always @(negedge paired_darkriscv.clock_2) if (paired_darkriscv.retire_2)
-        contract_reference_retire(2,paired_darkriscv.trace_pc_2,actual_instruction_2,actual_rd_2,paired_darkriscv.core_2.REG1[actual_rd_2],0);
+        contract_reference_retire(2,paired_darkriscv.trace_pc_2,actual_instruction_2,actual_rd_2,
+`ifdef DARKRISCV_THREE_STAGE
+            paired_darkriscv.core_2.REG1[(31-actual_rd_2)*32 +: 32]
+`else
+            paired_darkriscv.core_2.REG1[actual_rd_2]
+`endif
+,0);
 endmodule

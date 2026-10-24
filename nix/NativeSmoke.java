@@ -46,11 +46,11 @@ public class NativeSmoke {
                 solver.delete();
                 checkpoint("OR-Tools solve passed");
             }
-            case "ibex_test" -> runClient(new IBEXTestAttackerClient(library(args[0])), identical);
+            case "ibex_test", "ibex_mult_div_test", "ibex_cache_test" -> runClient(new IBEXTestAttackerClient(library(args[0])), identical);
             case "cva6_test" -> runClient(new CVA6TestAttackerClient(library(args[0])), identical);
             case "hazard3_test" -> runClient(new Hazard3TestAttackerClient(library(args[0])), identical);
             case "proteus_test" -> runClient(new ProteusTestAttackerClient(library(args[0])), identical);
-            case "piccolo_test", "rocket_test", "sodor_2_test", "darkriscv_2_test", "fwrisc_test", "cv32e40p_test" ->
+            case "piccolo_test", "rocket_test", "sodor_2_test", "sodor_5_test", "darkriscv_2_test", "darkriscv_3_test", "fwrisc_test", "cv32e40p_test" ->
                 runClient(new SimpleAttackerHarnessClient(library(args[0]), args[0].toUpperCase()), identical);
             case "cv32e40s_test" -> {
                 var off = new CV32E40STestAttackerClient(library(args[0]), CV32E40STestAttackerClient.TimingMode.off);

@@ -111,7 +111,13 @@ module top (
         .instr_o                (instr_2)
     );
 
-    data_mem data_mem_1 (
+    data_mem #(
+`ifdef IBEX_TEST_CACHE
+        .CACHE(1)
+`else
+        .CACHE(0)
+`endif
+    ) data_mem_1 (
         .clk_i                  (clock_1),
         .data_req_i             (data_req_1),
         .data_we_i              (data_we_1),
@@ -124,7 +130,13 @@ module top (
         .data_err_o             (data_err_1)
     );
 
-    data_mem data_mem_2 (
+    data_mem #(
+`ifdef IBEX_TEST_CACHE
+        .CACHE(1)
+`else
+        .CACHE(0)
+`endif
+    ) data_mem_2 (
         .clk_i                  (clock_2),
         .data_req_i             (data_req_2),
         .data_we_i              (data_we_2),
@@ -138,7 +150,11 @@ module top (
     );
 
     ibex_core #(
-        .RV32M                  (2),
+`ifdef IBEX_TEST_MULT_DIV
+        .RV32M                  (1), // RV32MSlow
+`else
+        .RV32M                  (2), // RV32MFast
+`endif
         .WritebackStage         (1'b0)
     ) core_1 (
         .clk_i                  (clock_1),
@@ -212,7 +228,11 @@ module top (
     );
 
     ibex_core #(
-        .RV32M                  (2),
+`ifdef IBEX_TEST_MULT_DIV
+        .RV32M                  (1), // RV32MSlow
+`else
+        .RV32M                  (2), // RV32MFast
+`endif
         .WritebackStage         (1'b0)
     ) core_2 (
         .clk_i                  (clock_2),

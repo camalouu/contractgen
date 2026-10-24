@@ -374,6 +374,13 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--ibex-test-lib"}, description = "Path to libcontract_ibex_test_attacker.so.")
     File ibexTestLib;
 
+    @Option(names = "--ibex-small-test-lib", description = "Path to the IBEX_SMALL_TEST attacker library.")
+    File ibexSmallTestLib;
+    @Option(names = "--ibex-mult-div-test-lib", description = "Path to the IBEX_MULT_DIV_TEST attacker library.")
+    File ibexMultDivTestLib;
+    @Option(names = "--ibex-cache-test-lib", description = "Path to the IBEX_CACHE_TEST attacker library.")
+    File ibexCacheTestLib;
+
     @Option(names = {"--cva6-test-lib"}, description = "Path to libcontract_cva6_test_attacker.so.")
     File cva6TestLib;
 
@@ -385,9 +392,13 @@ class SynthesizeNew implements Callable<Integer> {
 
     @Option(names = {"--sodor-2-test-lib"}, description = "Path to libcontract_sodor_2_test_attacker.so.")
     File sodor2TestLib;
+    @Option(names = "--sodor-5-test-lib", description = "Path to the SODOR_5_TEST attacker library.")
+    File sodor5TestLib;
 
     @Option(names = {"--darkriscv-2-test-lib"}, description = "Path to libcontract_darkriscv_2_test_attacker.so.")
     File darkriscv2TestLib;
+    @Option(names = "--darkriscv-3-test-lib", description = "Path to the DARKRISCV_3_TEST attacker library.")
+    File darkriscv3TestLib;
 
     @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so.")
     File fwriscTestLib;
@@ -454,7 +465,7 @@ class SynthesizeNew implements Callable<Integer> {
 
         // Preserve the established per-processor generation stream and seed behavior.
         // Replay eligibility independently allows misalignment on capable cores.
-        boolean allowMisalignedMemory = processor == ReplayAttackerHarness.IBEX_TEST;
+        boolean allowMisalignedMemory = processor.isIbex();
         TestCases generated = new RISCVIterativeTests(
                 isa,
                 RISCV_OBSERVATION_TYPE.getGroups(template),
@@ -489,11 +500,16 @@ class SynthesizeNew implements Callable<Integer> {
         runner.skipILP = skipILP;
         runner.spikeLib = spikeLib;
         runner.ibexTestLib = ibexTestLib;
+        runner.ibexSmallTestLib = ibexSmallTestLib;
+        runner.ibexMultDivTestLib = ibexMultDivTestLib;
+        runner.ibexCacheTestLib = ibexCacheTestLib;
         runner.cva6TestLib = cva6TestLib;
         runner.hazard3TestLib = hazard3TestLib;
         runner.proteusTestLib = proteusTestLib;
         runner.sodor2TestLib = sodor2TestLib;
+        runner.sodor5TestLib = sodor5TestLib;
         runner.darkriscv2TestLib = darkriscv2TestLib;
+        runner.darkriscv3TestLib = darkriscv3TestLib;
         runner.fwriscTestLib = fwriscTestLib;
         runner.cv32e40pTestLib = cv32e40pTestLib;
         runner.cv32e40sTestLib = cv32e40sTestLib;
@@ -1143,21 +1159,34 @@ class ReplaySynthesize implements Callable<Integer> {
 }
 
 enum ReplayAttackerHarness {
-    IBEX_TEST,
+    IBEX_TEST, // Compatibility alias for IBEX_SMALL_TEST.
+    IBEX_SMALL_TEST,
+    IBEX_MULT_DIV_TEST,
+    IBEX_CACHE_TEST,
     CVA6_TEST,
     HAZARD3_TEST,
     PROTEUS_TEST,
     SODOR_2_TEST,
+    SODOR_5_TEST,
     DARKRISCV_2_TEST,
+    DARKRISCV_3_TEST,
     FWRISC_TEST,
     CV32E40P_TEST,
     CV32E40S_TEST,
     PICCOLO_TEST,
     ROCKET_TEST;
 
+    boolean isIbex() {
+        return this == IBEX_TEST || this == IBEX_SMALL_TEST || this == IBEX_MULT_DIV_TEST || this == IBEX_CACHE_TEST;
+    }
+
+    boolean isRv32iOnly() {
+        return this == SODOR_2_TEST || this == SODOR_5_TEST || this == DARKRISCV_2_TEST || this == DARKRISCV_3_TEST;
+    }
+
     boolean supportsMisalignedDataAccess() {
         return switch (this) {
-            case IBEX_TEST, CV32E40P_TEST, CV32E40S_TEST -> true;
+            case IBEX_TEST, IBEX_SMALL_TEST, IBEX_MULT_DIV_TEST, IBEX_CACHE_TEST, CV32E40P_TEST, CV32E40S_TEST -> true;
             default -> false;
         };
     }
@@ -1204,6 +1233,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--ibex-test-lib"}, description = "Path to libcontract_ibex_test_attacker.so. Defaults to CONTRACT_IBEX_TEST_LIB or the IBEX_TEST compilation output.")
     File ibexTestLib;
 
+    @Option(names = "--ibex-small-test-lib", description = "Path to the IBEX_SMALL_TEST attacker library.")
+    File ibexSmallTestLib;
+    @Option(names = "--ibex-mult-div-test-lib", description = "Path to the IBEX_MULT_DIV_TEST attacker library.")
+    File ibexMultDivTestLib;
+    @Option(names = "--ibex-cache-test-lib", description = "Path to the IBEX_CACHE_TEST attacker library.")
+    File ibexCacheTestLib;
+
     @Option(names = {"--cva6-test-lib"}, description = "Path to libcontract_cva6_test_attacker.so. Defaults to CONTRACT_CVA6_TEST_LIB or the CVA6_TEST compilation output.")
     File cva6TestLib;
 
@@ -1215,9 +1251,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
     @Option(names = {"--sodor-2-test-lib"}, description = "Path to libcontract_sodor_2_test_attacker.so. Defaults to CONTRACT_SODOR_2_TEST_LIB or the SODOR_2_TEST compilation output.")
     File sodor2TestLib;
+    @Option(names = "--sodor-5-test-lib", description = "Path to the SODOR_5_TEST attacker library.")
+    File sodor5TestLib;
 
     @Option(names = {"--darkriscv-2-test-lib"}, description = "Path to libcontract_darkriscv_2_test_attacker.so. Defaults to CONTRACT_DARKRISCV_2_TEST_LIB or the DARKRISCV_2_TEST compilation output.")
     File darkriscv2TestLib;
+    @Option(names = "--darkriscv-3-test-lib", description = "Path to the DARKRISCV_3_TEST attacker library.")
+    File darkriscv3TestLib;
 
     @Option(names = {"--fwrisc-test-lib"}, description = "Path to libcontract_fwrisc_test_attacker.so. Defaults to CONTRACT_FWRISC_TEST_LIB or the FWRISC_TEST compilation output.")
     File fwriscTestLib;
@@ -1379,9 +1419,28 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         return switch (processor) {
             case IBEX_TEST -> createHarnessSetup(
                     new IBEXTest(new ILPUpdater(), testCases, allowed, isa, false),
-                    ibexTestLib, "CONTRACT_IBEX_TEST_LIB",
+                    ibexTestLib != null ? ibexTestLib : ibexSmallTestLib, "CONTRACT_IBEX_TEST_LIB",
                     contractgen.util.RuntimePaths.work("ibex-test/compiled/libcontract_ibex_test_attacker.so").toString(),
                     IBEXTestAttackerClient::new, true, true);
+            case IBEX_SMALL_TEST -> createHarnessSetup(
+                    new IBEXTest(new ILPUpdater(), testCases, allowed, isa, false),
+                    ibexSmallTestLib != null ? ibexSmallTestLib : ibexTestLib,
+                    System.getenv("CONTRACT_IBEX_SMALL_TEST_LIB") != null && !System.getenv("CONTRACT_IBEX_SMALL_TEST_LIB").isBlank()
+                            ? "CONTRACT_IBEX_SMALL_TEST_LIB" : "CONTRACT_IBEX_TEST_LIB",
+                    contractgen.util.RuntimePaths.work("ibex-test/compiled/libcontract_ibex_test_attacker.so").toString(),
+                    IBEXTestAttackerClient::new, true, true);
+            case IBEX_MULT_DIV_TEST, IBEX_CACHE_TEST -> {
+                boolean cache = processor == ReplayAttackerHarness.IBEX_CACHE_TEST;
+                String variant = cache ? "CACHE" : "MULT_DIV";
+                String atom = cache ? "ibex_cache_test" : "ibex_mult_div_test";
+                yield createHarnessSetup(
+                        new SimpleTestMARCH(new ILPUpdater(), testCases, allowed, isa, "ibex-test", processor.name(), variant),
+                        cache ? ibexCacheTestLib : ibexMultDivTestLib,
+                        "CONTRACT_" + atom.toUpperCase(java.util.Locale.ROOT) + "_LIB",
+                        contractgen.util.RuntimePaths.work("ibex-test-" + variant.toLowerCase(java.util.Locale.ROOT)
+                                + "/compiled/libcontract_" + atom + "_attacker.so").toString(),
+                        IBEXTestAttackerClient::new, true, true);
+            }
             case CVA6_TEST -> createHarnessSetup(
                     new CVA6Test(new ILPUpdater(), testCases, allowed, isa, false),
                     cva6TestLib, "CONTRACT_CVA6_TEST_LIB",
@@ -1401,10 +1460,14 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
                     testCases, allowed, "sodor-test", "SODOR_2_TEST",
                     sodor2TestLib, "CONTRACT_SODOR_2_TEST_LIB",
                     contractgen.util.RuntimePaths.work("sodor-test/compiled/libcontract_sodor_2_test_attacker.so").toString());
+            case SODOR_5_TEST -> variantHarnessSetup(testCases, allowed, "sodor-test", "5",
+                    sodor5TestLib, "sodor_5_test");
             case DARKRISCV_2_TEST -> simpleHarnessSetup(
                     testCases, allowed, "darkriscv-test", "DARKRISCV_2_TEST",
                     darkriscv2TestLib, "CONTRACT_DARKRISCV_2_TEST_LIB",
                     contractgen.util.RuntimePaths.work("darkriscv-test/compiled/libcontract_darkriscv_2_test_attacker.so").toString());
+            case DARKRISCV_3_TEST -> variantHarnessSetup(testCases, allowed, "darkriscv-test", "3",
+                    darkriscv3TestLib, "darkriscv_3_test");
             case FWRISC_TEST -> simpleHarnessSetup(
                     testCases, allowed, "fwrisc-test", "FWRISC_TEST",
                     fwriscTestLib, "CONTRACT_FWRISC_TEST_LIB",
@@ -1429,6 +1492,14 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         };
     }
 
+    private AttackerHarnessSetup variantHarnessSetup(RISCVListTestCases tests,
+            Set<RISCV_OBSERVATION_TYPE> allowed, String resource, String variant, File library, String atom) {
+        return createHarnessSetup(new SimpleTestMARCH(new ILPUpdater(), tests, allowed, isa, resource, processor.name(), variant),
+                library, "CONTRACT_" + atom.toUpperCase(java.util.Locale.ROOT) + "_LIB",
+                contractgen.util.RuntimePaths.work(resource + "-" + variant + "/compiled/libcontract_" + atom + "_attacker.so").toString(),
+                path -> new SimpleAttackerHarnessClient(path, processor.name()), false, true);
+    }
+
     private AttackerHarnessSetup simpleHarnessSetup(
             RISCVListTestCases testCases,
             Set<RISCV_OBSERVATION_TYPE> allowed,
@@ -1450,16 +1521,13 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     }
 
     static void validateHarnessIsa(ReplayAttackerHarness processor, Set<RISCV_SUBSET> isa) {
-        if ((processor == ReplayAttackerHarness.SODOR_2_TEST
-                || processor == ReplayAttackerHarness.DARKRISCV_2_TEST)
-                && isa.contains(RISCV_SUBSET.M)) {
+        if (processor.isRv32iOnly() && isa.contains(RISCV_SUBSET.M)) {
             throw new IllegalArgumentException(processor + " uses the checked-in RV32I core and does not support M.");
         }
     }
 
     static void validateImportedHarnessIsa(ReplayAttackerHarness processor, List<TestCase> tests) {
-        if (processor != ReplayAttackerHarness.SODOR_2_TEST
-                && processor != ReplayAttackerHarness.DARKRISCV_2_TEST) return;
+        if (!processor.isRv32iOnly()) return;
         for (TestCase test : tests)
             for (Program side : List.of(test.getProgram1(), test.getProgram2()))
                 if (side instanceof contractgen.riscv.isa.RISCVProgram program)

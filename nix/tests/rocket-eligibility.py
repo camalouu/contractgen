@@ -6,8 +6,8 @@ import sys
 
 application, directory = sys.argv[1:3]
 processor = sys.argv[3] if len(sys.argv) > 3 else "ROCKET_TEST"
-supports_misaligned = processor in {"IBEX_TEST", "CV32E40P_TEST", "CV32E40S_TEST"}
-isa = "BASE" if processor in {"SODOR_2_TEST", "DARKRISCV_2_TEST"} else "BASE,M"
+supports_misaligned = processor in {"IBEX_TEST", "IBEX_SMALL_TEST", "IBEX_MULT_DIV_TEST", "IBEX_CACHE_TEST", "CV32E40P_TEST", "CV32E40S_TEST"}
+isa = "BASE" if processor in {"SODOR_2_TEST", "SODOR_5_TEST", "DARKRISCV_2_TEST", "DARKRISCV_3_TEST"} else "BASE,M"
 root = pathlib.Path(directory)
 root.mkdir(parents=True, exist_ok=True)
 nop = {"type": "ADDI", "rd": 0, "rs1": 0, "imm": 0}

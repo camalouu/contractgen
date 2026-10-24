@@ -4,6 +4,10 @@ let
     piccolo = { dir = "piccolo-test"; deps = [ "attacker-test-common" ]; atom = "piccolo_test"; };
     rocket = { dir = "rocket-test"; deps = []; atom = "rocket_test"; };
     ibex = { dir = "ibex-test"; deps = [ "attacker-test-common" ]; atom = "ibex_test"; };
+    ibex-mult-div = { dir = "ibex-test"; deps = [ "attacker-test-common" ]; atom = "ibex_mult_div_test"; variant = "MULT_DIV"; };
+    ibex-cache = { dir = "ibex-test"; deps = [ "attacker-test-common" ]; atom = "ibex_cache_test"; variant = "CACHE"; };
+    sodor-5 = { dir = "sodor-test"; deps = [ "sodor-5" "attacker-test-common" ]; atom = "sodor_5_test"; variant = "5"; };
+    darkriscv-3 = { dir = "darkriscv-test"; deps = [ "darkriscv-3" "attacker-test-common" ]; atom = "darkriscv_3_test"; variant = "3"; };
     cva6 = { dir = "cva6-test"; deps = [ "cva6" "attacker-test-common" ]; atom = "cva6_test"; };
     hazard3 = { dir = "hazard3-test"; deps = [ "hazard3" "attacker-test-common" ]; atom = "hazard3_test"; };
     proteus = { dir = "proteus-test"; deps = [ "attacker-test-common" ]; atom = "proteus_test"; };
@@ -27,7 +31,7 @@ let
       cd resources
       export CONTRACTGEN_RESOURCE_ROOT="$PWD"
       export CONTRACT_BUILD_JOBS="$NIX_BUILD_CORES"
-      bash ${spec.dir}/compile-verilator.sh "$PWD/${spec.dir}" "$PWD/build"
+      bash ${spec.dir}/compile-verilator.sh "$PWD/${spec.dir}" "$PWD/build"${pkgs.lib.optionalString (spec ? variant) " ${pkgs.lib.escapeShellArg spec.variant}"}
       runHook postBuild
     '';
     installPhase = ''

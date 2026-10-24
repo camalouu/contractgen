@@ -60,11 +60,16 @@ in {
     }
 
     run_workflow IBEX_TEST BASE,M off
+    run_workflow IBEX_SMALL_TEST BASE,M off
+    run_workflow IBEX_MULT_DIV_TEST BASE,M off
+    run_workflow IBEX_CACHE_TEST BASE,M off
     run_workflow CVA6_TEST BASE,M off
     run_workflow HAZARD3_TEST BASE,M off
     run_workflow PROTEUS_TEST BASE,M off
     run_workflow SODOR_2_TEST BASE off
+    run_workflow SODOR_5_TEST BASE off
     run_workflow DARKRISCV_2_TEST BASE off
+    run_workflow DARKRISCV_3_TEST BASE off
     run_workflow PICCOLO_TEST BASE,M off
     run_workflow FWRISC_TEST BASE,M off
     run_workflow CV32E40P_TEST BASE,M off
@@ -75,9 +80,18 @@ in {
   shared-reference-conformance = pkgs.runCommand "contractgen-shared-reference-conformance" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: drv:
       "${tools.spike}/libexec/contract-spike-rtl-agreement ${drv}/lib/libcontract_${drv.atom}_attacker.so "
-        + (if builtins.elem name [ "sodor-2" "darkriscv-2" ] then "RV32I" else "RV32IM")
-        + lib.optionalString (builtins.elem name [ "ibex" "cv32e40p" "cv32e40s" ]) " misaligned"
+        + (if builtins.elem name [ "sodor-2" "sodor-5" "darkriscv-2" "darkriscv-3" ] then "RV32I" else "RV32IM")
+        + lib.optionalString (builtins.elem name [ "ibex" "ibex-mult-div" "ibex-cache" "cv32e40p" "cv32e40s" ]) " misaligned"
         + "\npython3 ${./tests/rtl-control-flow.py} ${drv}/lib/libcontract_${drv.atom}_attacker.so") attackers)}
+    touch $out
+  '';
+  native-variants = pkgs.runCommand "contractgen-native-variants" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    python3 ${./tests/native-variants.py} \
+      ${attackers.ibex}/lib/libcontract_ibex_test_attacker.so ibex-small \
+      ${attackers.ibex-mult-div}/lib/libcontract_ibex_mult_div_test_attacker.so ibex-mult-div \
+      ${attackers.ibex-cache}/lib/libcontract_ibex_cache_test_attacker.so ibex-cache \
+      ${attackers.sodor-5}/lib/libcontract_sodor_5_test_attacker.so sodor-5 \
+      ${attackers.darkriscv-3}/lib/libcontract_darkriscv_3_test_attacker.so darkriscv-3
     touch $out
   '';
   rocket-conformance = pkgs.runCommand "contractgen-rocket-conformance" {

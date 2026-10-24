@@ -2,16 +2,19 @@
 set -euo pipefail
 
 SOURCE_DIR="$1"
+STAGES="${3:-2}"
+STAGES="${STAGES:-2}"
+[[ "$STAGES" = 2 || "$STAGES" = 5 ]] || { echo "Expected Sodor stage count 2 or 5" >&2; exit 1; }
 OUT_DIR="$2"
-LEGACY_DIR="${CONTRACT_SODOR_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/sodor-2}"
-PROJECT_LEGACY_DIR="${CONTRACT_SODOR_PROJECT_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/sodor-2}"
+LEGACY_DIR="${CONTRACT_SODOR_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/sodor-${STAGES}}"
+PROJECT_LEGACY_DIR="${CONTRACT_SODOR_PROJECT_RESOURCE_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/sodor-${STAGES}}"
 COMMON_DIR="${CONTRACT_ATTACKER_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
 PROJECT_COMMON_DIR="${CONTRACT_ATTACKER_PROJECT_COMMON_ROOT:-${CONTRACTGEN_RESOURCE_ROOT:-./src/main/resources}/attacker-test-common}"
 
 if [[ -d "$LEGACY_DIR/core" ]]; then CORE_ROOT="$LEGACY_DIR"; else CORE_ROOT="$PROJECT_LEGACY_DIR"; fi
 if [[ -d "$COMMON_DIR/verif" ]]; then COMMON_ROOT="$COMMON_DIR"; else COMMON_ROOT="$PROJECT_COMMON_DIR"; fi
 if [[ ! -d "$CORE_ROOT/core" || ! -d "$COMMON_ROOT/verif" ]]; then
-  echo "Cannot find Sodor-2 or shared attacker-harness resources." >&2
+  echo "Cannot find Sodor-$STAGES or shared attacker-harness resources." >&2
   exit 1
 fi
 
@@ -21,6 +24,7 @@ mkdir -p "$OUT_DIR/verif" "$OUT_DIR/core"
 for file in "$CORE_ROOT"/core/*.v; do
   perl -0pe 's/,\s*\)/\n)/g' "$file" > "$OUT_DIR/core/$(basename "$file")"
 done
+if [[ "$STAGES" = 2 ]]; then
 # The checked-in legacy Sodor RTL was accepted after sv2v normalization. Make
 # the same ANSI-port normalization directly for the handful of redeclarations
 # that Verilator rejects when sv2v is not installed.
@@ -29,6 +33,19 @@ perl -0pi -e 's/output \[31:0\] pc_retire/output reg [31:0] pc_retire/; s/output
 perl -0pi -e 's/reg \[31:0\] regfile \[0:31\] = 0;/reg [31:0] regfile [0:31];\n  initial begin for (integer cg_i = 0; cg_i < 32; cg_i = cg_i + 1) regfile[cg_i] = 0; end/' "$OUT_DIR/core/DatPath_2stage.v"
 perl -0pi -e 's/old_regfile <= 0;/for (integer cg_i = 0; cg_i < 32; cg_i = cg_i + 1) old_regfile[cg_i] <= 0;/; s/old_regfile <= rvfi_regfile;/for (integer cg_i = 0; cg_i < 32; cg_i = cg_i + 1) old_regfile[cg_i] <= rvfi_regfile[cg_i];/' "$OUT_DIR/core/Core_2stage.v"
 
+else
+    # Normalize only the disposable copy; legacy generated arrays use scalar-zero resets.
+    python3 - "$OUT_DIR/core" <<'PYNORMAL'
+from pathlib import Path
+import re,sys
+for p in Path(sys.argv[1]).glob('*.v'):
+    s=p.read_text()
+    s=s.replace('regfile <= 0;', 'for (integer cg_i=0;cg_i<32;cg_i=cg_i+1) regfile[cg_i] <= 0;')
+    p.write_text(s)
+PYNORMAL
+    sv2v -DSYNTHESIS -DRISCV_FORMAL "$OUT_DIR"/core/*.v > "$OUT_DIR/core-normalized.v"
+fi
+
 for name in atk clk_sync riscv_decoder; do
   perl -0pe 's/,\s*\)/\n)/g' "$CORE_ROOT/verif/$name.sv" > "$OUT_DIR/verif/$name.sv"
 done
@@ -36,7 +53,7 @@ perl -0pe 's/module\s+top\s*\(\s*\);/module top (input logic clk, input logic re
   "$CORE_ROOT/verif/top.sv" > "$OUT_DIR/verif/top.sv"
 
 # Wire diagnostics in the verification top, leaving pinned core sources intact.
-python3 - "$OUT_DIR/verif/top.sv" <<'PYTRACE'
+python3 - "$OUT_DIR/verif/top.sv" "$STAGES" <<'PYTRACE'
 import pathlib,re,sys
 p=pathlib.Path(sys.argv[1]);s=p.read_text()
 s=s.replace('    logic clock;', '    logic [31:0] trace_pc_1, trace_pc_2;\n    logic clock;',1)
@@ -50,6 +67,8 @@ p.write_text(s)
 PYTRACE
 
 CORE_SOURCES=("$OUT_DIR"/core/*.v)
+STAGE_FLAGS=()
+if [[ "$STAGES" = 5 ]]; then CORE_SOURCES=("$OUT_DIR/core-normalized.v"); STAGE_FLAGS=(-DSODOR_FIVE_STAGE); fi
 VERIF_SOURCES=(
   "$OUT_DIR"/verif/atk.sv "$OUT_DIR"/verif/clk_sync.sv
   "$COMMON_ROOT"/verif/data_mem.sv "$OUT_DIR"/verif/riscv_decoder.sv
@@ -59,12 +78,12 @@ VERIF_SOURCES=(
 )
 
 verilator --cc --top-module sodor_test_top --timing \
-  -DSYNTHESIS -DRISCV_FORMAL -I"$OUT_DIR/core" \
+  -DSYNTHESIS -DRISCV_FORMAL "${STAGE_FLAGS[@]}" -I"$OUT_DIR/core" \
   -Wno-fatal -Wno-WIDTH -Wno-INITIALDLY -Wno-LATCH -Wno-UNOPTFLAT \
   --threads-dpi none -O3 --Mdir "$OUT_DIR/obj_dir_shared" \
   --exe "$SOURCE_DIR/verif/sodor_test_runtime.cpp" "$COMMON_ROOT/verif/simple_test_shared.cpp" \
   -CFLAGS "-std=c++17 -O3 -fPIC -I${CONTRACTGEN_RESOURCE_ROOT:-$SOURCE_DIR/..}/attacker-test-common/verif -I$COMMON_ROOT/verif" -LDFLAGS "-shared -fPIC" \
-  -o libcontract_sodor_2_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
-make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vsodor_test_top.mk libcontract_sodor_2_test_attacker.so
-cp "$OUT_DIR/obj_dir_shared/libcontract_sodor_2_test_attacker.so" "$OUT_DIR/libcontract_sodor_2_test_attacker.so"
-test -f "$OUT_DIR/libcontract_sodor_2_test_attacker.so"
+  -o libcontract_sodor_${STAGES}_test_attacker.so "${CORE_SOURCES[@]}" "${VERIF_SOURCES[@]}"
+make -j "${CONTRACT_BUILD_JOBS:-4}" -C "$OUT_DIR/obj_dir_shared" -f Vsodor_test_top.mk libcontract_sodor_${STAGES}_test_attacker.so
+cp "$OUT_DIR/obj_dir_shared/libcontract_sodor_${STAGES}_test_attacker.so" "$OUT_DIR/libcontract_sodor_${STAGES}_test_attacker.so"
+test -f "$OUT_DIR/libcontract_sodor_${STAGES}_test_attacker.so"

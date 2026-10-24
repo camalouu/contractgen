@@ -5,6 +5,7 @@
 #include "verilated.h"
 
 #include <memory>
+#include <stdexcept>
 
 namespace {
 thread_local const SimpleTestCaseImage* current_case = nullptr;
@@ -28,6 +29,7 @@ extern "C" int contract_simple_max_instr_count() {
 }
 
 SimpleTestStatus contract_simple_run_case(const SimpleTestCaseImage& test_case, int max_cycles) {
+    if (test_case.max_instr_count < 31) throw std::invalid_argument("Invalid retirement bound");
     current_case = &test_case;
     auto context = std::make_unique<VerilatedContext>();
     auto top = std::make_unique<Vsodor_test_top>(context.get());

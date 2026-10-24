@@ -41,7 +41,7 @@ let
       --add-flags '-cp ${java}/share/java/contractgen.jar:${java}/share/java/lib/* contractgen.Main'
   '';
 in {
-  packages = { default = application; inherit java native; practical-benchmark-driver = practicalBenchmarkDriver; resources = resources.all;
+  packages = { attacker-ibex-small = attackers.ibex; default = application; inherit java native; practical-benchmark-driver = practicalBenchmarkDriver; resources = resources.all;
     legacy-benchmark-ibex = legacyBenchmark "ibex";
     legacy-benchmark-cva6 = legacyBenchmark "cva6";
     inherit (tools) spike verilator yosys;

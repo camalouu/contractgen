@@ -9,6 +9,8 @@ import java.util.Set;
 import contractgen.riscv.isa.RISCV_SUBSET;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SynthesizeNewTest {
@@ -174,11 +176,30 @@ class SynthesizeNewTest {
                 java.util.List.of(contractgen.riscv.isa.RISCVInstruction.MUL(1, 2, 3)));
         var testcase = new contractgen.riscv.isa.RISCVTestCase(program, program, 2, 7);
         for (var processor : java.util.List.of(ReplayAttackerHarness.SODOR_2_TEST,
-                ReplayAttackerHarness.DARKRISCV_2_TEST))
+                ReplayAttackerHarness.DARKRISCV_2_TEST, ReplayAttackerHarness.SODOR_5_TEST,
+                ReplayAttackerHarness.DARKRISCV_3_TEST))
             assertThrows(IllegalArgumentException.class, () ->
                     ReplaySynthesizeSpike.validateImportedHarnessIsa(processor, java.util.List.of(testcase)));
         ReplaySynthesizeSpike.validateImportedHarnessIsa(ReplayAttackerHarness.ROCKET_TEST,
                 java.util.List.of(testcase));
+    }
+
+    @Test
+    void nativeVariantsParseAndDeclareTheirCapabilities() {
+        for (var processor : java.util.List.of(ReplayAttackerHarness.IBEX_SMALL_TEST,
+                ReplayAttackerHarness.IBEX_MULT_DIV_TEST, ReplayAttackerHarness.IBEX_CACHE_TEST)) {
+            var command = new SynthesizeNew();
+            new picocli.CommandLine(command).parseArgs("-p", processor.name(), "-i", "BASE,M", "-c", "BASE",
+                    "-n", "1", "-t", "1", "-s", "1", "--output-dir", "unused");
+            assertEquals(processor, command.processor);
+            assertTrue(processor.supportsMisalignedDataAccess());
+            ReplaySynthesizeSpike.validateHarnessIsa(processor, Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M));
+        }
+        for (var processor : java.util.List.of(ReplayAttackerHarness.SODOR_5_TEST, ReplayAttackerHarness.DARKRISCV_3_TEST)) {
+            assertFalse(processor.supportsMisalignedDataAccess());
+            assertThrows(IllegalArgumentException.class, () -> ReplaySynthesizeSpike.validateHarnessIsa(processor,
+                    Set.of(RISCV_SUBSET.BASE, RISCV_SUBSET.M)));
+        }
     }
 
     @Test

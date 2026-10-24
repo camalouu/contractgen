@@ -14,8 +14,15 @@ module sodor_test_top (
         contract_reference_retire(1,paired_sodor.trace_pc_1,paired_sodor.retire_instr_1,paired_sodor.rd_1,paired_sodor.rd_wdata_1,paired_sodor.rvfi_trap_1);
     always @(negedge paired_sodor.clock_2) if (paired_sodor.retire_2)
         contract_reference_retire(2,paired_sodor.trace_pc_2,paired_sodor.retire_instr_2,paired_sodor.rd_2,paired_sodor.rd_wdata_2,paired_sodor.rvfi_trap_2);
+`ifdef SODOR_FIVE_STAGE
+    always @(posedge paired_sodor.clock_1) if (!reset && paired_sodor.core_1.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_en)
+        contract_reference_write(1,int'(paired_sodor.core_1.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_addr),paired_sodor.core_1.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_data);
+    always @(posedge paired_sodor.clock_2) if (!reset && paired_sodor.core_2.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_en)
+        contract_reference_write(2,int'(paired_sodor.core_2.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_addr),paired_sodor.core_2.DatPath_5stage.RegisterFile_5stage.regfile_MPORT_data);
+`else
     always @(posedge paired_sodor.clock_1) if (!reset && paired_sodor.core_1.DatPath_2stage.regfile_MPORT_1_en)
         contract_reference_write(1,int'(paired_sodor.core_1.DatPath_2stage.regfile_MPORT_1_addr),paired_sodor.core_1.DatPath_2stage.regfile_MPORT_1_data);
     always @(posedge paired_sodor.clock_2) if (!reset && paired_sodor.core_2.DatPath_2stage.regfile_MPORT_1_en)
         contract_reference_write(2,int'(paired_sodor.core_2.DatPath_2stage.regfile_MPORT_1_addr),paired_sodor.core_2.DatPath_2stage.regfile_MPORT_1_data);
+`endif
 endmodule
