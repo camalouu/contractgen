@@ -31,14 +31,14 @@ let
   });
   spike = pkgs.stdenv.mkDerivation {
     pname = "contract-spike";
-    version = "28893f6";
+    version = "de82903-contract";
     src = inputs.spike-src;
-    patches = [ ./patches/spike-execution-model.patch ./patches/spike-dependencies.patch ];
+    patches = [ ./patches/spike-contract.patch ];
     nativeBuildInputs = with pkgs; [ autoconf automake libtool pkg-config ];
     buildInputs = with pkgs; [ boost gmp dtc ];
     preConfigure = ''mkdir build; cd build; configureScript=../configure'';
-    # This fork carries an older Autoconf macro which probes for the C `exit`
-    # symbol inside libboost_regex when no exact name is supplied.  Naming the
+    # This upstream revision has an older Autoconf macro which probes for the
+    # C `exit` symbol inside libboost_regex without an exact name. Naming the
     # library selects the macro's working link test instead.
     configureFlags = [ "--with-boost-regex=boost_regex" ];
     env.CXXFLAGS = "-O2 -fPIC";

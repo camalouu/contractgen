@@ -54,9 +54,10 @@ large deliverable artifacts rather than routine smoke checks.
 
 ## Shared reference and Rocket
 
-The Spike derivation applies the checked-in `patches/spike-execution-model.patch`
-without changing its source revision or any simulator pin. Both C ABI entry
-points execute the sole shared `rv32-v1` reference using Spike instruction
+The Spike derivation pins the original `riscv-software-src/riscv-isa-sim`
+repository at `de829033327fb5f34839b9946a213917186b6a4d` and applies the
+complete checked-in `patches/spike-contract.patch`. No Spike fork is fetched.
+Both C ABI entry points execute the sole shared `rv32-v1` reference using Spike instruction
 handlers. All Spike-backed workflows use it by default:
 
 ```sh
@@ -73,5 +74,23 @@ and `rocket-workflow` are part of `nix flake check`. See
 
 The Spike build strips generated debug sections before installation to avoid
 copying the large debug artifacts twice before Nix's normal fixup. Simulator
-revisions and compilation flags are unchanged. Native reference checks run before
+compilation flags are unchanged. Native reference checks run before
 that stripping step.
+
+## Maintaining the Spike patch
+
+`patches/spike-contract.patch` contains all six files changed by the historical
+`camalouu/riscv-isa-sim` `atom-diff` branch through
+`40d6579aba9d140bab067c0b0067bc8347a4433e`, plus this project's subsequent
+structural predicates and producer-attributed dependency changes. It replaces
+the former execution-model and dependency patches. The upstream pin is the
+fork's original base, so this migration does not upgrade the simulator.
+The resulting adapter source is byte-for-byte identical to the previous patched
+build. Fork documentation and execution-model regression source are also retained.
+
+Maintain future adapter changes here. To regenerate the patch, check out the
+pinned upstream revision in a disposable Git worktree, apply the patch, edit
+and test there, then use `git diff --binary --full-index HEAD` (including new
+files with `git add -N`) to replace the patch. Keep the original upstream pin
+unless intentionally upgrading Spike. Verify with `nix build .#spike` and
+`nix flake check`; the Spike build runs architectural and dependency regressions.

@@ -28,7 +28,7 @@ Licenses: Rocket includes BSD-style Berkeley, SiFive, and IBM licenses.
 Chisel is Apache-2.0; CDE and Diplomacy use their upstream licenses; HardFloat
 uses its Berkeley license. Corresponding notices are retained under `licenses/`.
 
-The shared reference is supplied by `nix/patches/spike-execution-model.patch`
-against the existing pinned adapted Spike revision. Rocket requires the generic
+The shared reference is supplied by `nix/patches/spike-contract.patch`
+against pinned original upstream Spike. Rocket requires the generic
 `rv32-v1` execution specification; see `docs/EXECUTION_MODEL.md`. No Rocket-specific
 reference patch is applied.

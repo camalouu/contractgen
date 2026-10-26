@@ -218,18 +218,18 @@
     "spike-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1789919392,
-        "narHash": "sha256-ojhK3ZSYJ0ANWdWakFFaK67WpA4Zus7a4dKpGRHpLPA=",
-        "owner": "camalouu",
+        "lastModified": 1781011120,
+        "narHash": "sha256-s8MT5zkDYf+MtnuFCP61A9rALqXPiA57mvky2vcSjB0=",
+        "owner": "riscv-software-src",
         "repo": "riscv-isa-sim",
-        "rev": "28893f6bfd8ce1659919a8dabdae8ce3db4a11a6",
+        "rev": "de829033327fb5f34839b9946a213917186b6a4d",
         "type": "github"
       },
       "original": {
-        "owner": "camalouu",
+        "owner": "riscv-software-src",
         "repo": "riscv-isa-sim",
-        "rev": "28893f6bfd8ce1659919a8dabdae8ce3db4a11a6",
-        "type": "github"
+        "type": "github",
+        "rev": "de829033327fb5f34839b9946a213917186b6a4d"
       }
     },
     "synlig-abc-src": {
