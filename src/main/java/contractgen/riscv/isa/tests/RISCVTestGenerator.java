@@ -175,6 +175,38 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         return aligned_instructions;
     }
 
+    /** Align a target pair without introducing different helper instructions on either side. */
+    static Pair<List<RISCVInstruction>, List<RISCVInstruction>> alignTargetPair(
+            Pair<List<RISCVInstruction>, List<RISCVInstruction>> pair, boolean alignMemory) {
+        if (pair.left().size() != pair.right().size())
+            throw new IllegalArgumentException("Target pairs must have matching instruction slots");
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        for (int i = 0; i < pair.left().size(); i++) {
+            var a = pair.left().get(i);
+            var b = pair.right().get(i);
+            boolean alignA = needsAlignment(a, alignMemory);
+            boolean alignB = needsAlignment(b, alignMemory);
+            Set<Integer> bases = new LinkedHashSet<>();
+            if (alignA && a.rs1() != 0) bases.add(a.rs1());
+            if (alignB && b.rs1() != 0) bases.add(b.rs1());
+            for (int register : bases) {
+                var helper = RISCVInstruction.ANDI(register, register, MAX_IMM_I - 4);
+                left.add(helper);
+                right.add(helper);
+            }
+            // Clear immediate low bits as well, including when the base is x0.
+            left.add(alignA ? a.cloneAlteringIMM(a.imm() & ~3L) : a);
+            right.add(alignB ? b.cloneAlteringIMM(b.imm() & ~3L) : b);
+        }
+        return new Pair<>(left, right);
+    }
+
+    private static boolean needsAlignment(RISCVInstruction instruction, boolean alignMemory) {
+        return instruction.type() == RISCV_TYPE.JALR || (alignMemory &&
+                Set.of(RISCV_TYPE.SH, RISCV_TYPE.SW, RISCV_TYPE.LH, RISCV_TYPE.LHU, RISCV_TYPE.LW)
+                        .contains(instruction.type()));
+    }
+
     /**
      * @param index starting index
      * @return a list of test cases.
@@ -225,17 +257,9 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
                     }
                     targets.add(new RISCVObservation(producer == null ? type : producer, observation, observation.isDependency()));
                     
-                    if (!allow_misaligned_memory && !observation.isDependency()) {
-                        targetInstruction = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
-                            alignMemoryAddresses(targetInstruction.left()),
-                            alignMemoryAddresses(targetInstruction.right()));                
-                    }
-
-                    // ensure jalr are always aligned
-                    if (type == RISCV_TYPE.JALR && !observation.isDependency()) {
-                        targetInstruction = new Pair<List<RISCVInstruction>,List<RISCVInstruction>>(
-                            insertAtSecondToLast(targetInstruction.left(), RISCVInstruction.ANDI(targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), targetInstruction.left().get(targetInstruction.left().size() - 1).rs1(), MAX_IMM_I - 4)), 
-                            insertAtSecondToLast(targetInstruction.right(), RISCVInstruction.ANDI(targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), targetInstruction.right().get(targetInstruction.right().size() - 1).rs1(), MAX_IMM_I - 4)));
+                    // Dependency setup preserves distances; zeroSourcePair already aligns both zero bases.
+                    if (!observation.isDependency() && observation != RISCV_OBSERVATION_TYPE.RS1_IS_ZERO) {
+                        targetInstruction = alignTargetPair(targetInstruction, !allow_misaligned_memory);
                     }
 
                     List<RISCVInstruction> suffix = randomSuffix

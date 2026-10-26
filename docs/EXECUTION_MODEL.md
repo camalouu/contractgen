@@ -124,6 +124,20 @@ and `<contract>.unsupported.json` lists excluded ordinals, case indices and reas
 A wholly unsupported nonempty set produces an explicit error instead of an empty
 contract. Unexpected reference failures or RTL errors still fail synthesis.
 
+## Paired alignment preparation
+
+For non-dependency targets requiring aligned data accesses, the generator clears
+the memory immediate's low two bits and inserts identical ANDI preparation for
+the union of both sides' nonzero base registers. JALR uses the same paired
+preparation even when misaligned data accesses are allowed. This avoids one-sided
+helpers and immediate-dependent ORI/ANDI sequences. The x0-versus-zero-register
+targets already initialize equal zero bases and aligned immediates, so they need
+no additional alignment instructions. Shared random prefixes remain shared.
+
+This changes generated programs for existing seeds. Historical testcase files
+retain their original programs and labels; regenerate and rerun RTL to evaluate
+the corrected generator.
+
 ## Controlled dependency generation
 
 RAW and WAW targets at distances 1–4 select enabled integer ALU producers:
