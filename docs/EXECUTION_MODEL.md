@@ -128,15 +128,121 @@ contract. Unexpected reference failures or RTL errors still fail synthesis.
 
 For non-dependency targets requiring aligned data accesses, the generator clears
 the memory immediate's low two bits and inserts identical ANDI preparation for
-the union of both sides' nonzero base registers. JALR uses the same paired
-preparation even when misaligned data accesses are allowed. This avoids one-sided
-helpers and immediate-dependent ORI/ANDI sequences. The x0-versus-zero-register
+the union of both sides' nonzero base registers. JALR uses the controlled
+address preparation described below. This avoids one-sided helpers and
+immediate-dependent ORI/ANDI sequences. The x0-versus-zero-register
 targets already initialize equal zero bases and aligned immediates, so they need
 no additional alignment instructions. Shared random prefixes remain shared.
 
 This changes generated programs for existing seeds. Historical testcase files
 retain their original programs and labels; regenerate and rerun RTL to evaluate
 the corrected generator.
+
+## Observation targeting
+
+Ordinary targets are filtered through `RISCVObservation.isApplicable()` before
+setup is generated. Register-number and immediate alternatives must remain
+distinct after encoding/alignment. Operand-value targets use nonzero scratch
+registers, full-width LUI/ADDI constants when available, and four NOPs between
+setup and the target. Both sides use the same setup instruction types. Scratch
+registers exclude the target's existing source and destination registers.
+
+Architectural `RS1`/`RS2` targets prepare two nonzero registers with the same
+value using identical setup on both sides, then change only which register the
+target reads. Neither candidate aliases another target operand or its destination.
+Memory alignment is prepared before the four-NOP gap so it does not introduce
+different recent dependencies. Dedicated `RS*_IS_ZERO` targets cover x0 versus a
+register containing zero. Value targets keep source register numbers fixed.
+Structural `RS2` on shift-immediate instructions still varies the encoded shamt
+field; it is not an architectural register read and has no equal-value guarantee.
+This policy applies across cores and does not use measured leakage or a core's
+pipeline behavior to choose cases. It changes generated programs for existing seeds.
+
+Memory templates prepare the target's actual base and accessed locations:
+
+- `MEM_ADDR` changes the target offset from zero to four; loads initialize equal
+  data at both locations with identical stores on both sides.
+- `MEM_W_DATA` changes the target store's value through the same source register.
+- `MEM_R_DATA` initializes different data at the exact location subsequently read.
+  Its helper stores use the same base, source register and offset on both sides.
+- Alignment targets compare word-aligned addresses against offset two
+  (`IS_ALIGNED`) or offset three (`IS_HALF_ALIGNED`), matching Spike's existing
+  predicates. They are generated only when the actual access width is naturally
+  aligned or misaligned accesses are permitted. Generic alignment preparation
+  must not erase these intentional address differences.
+
+Value-zero and log2 observations now have dedicated operand/result targets.
+Result templates keep the destination fixed and choose operands with known
+zero/nonzero results; load results use controlled memory initialization. JAL/JALR
+link values cannot differ at the same instruction slot, so result-value targets
+are omitted for them. AUIPC cannot produce zero at these target PCs, so its
+result-zero target is omitted. `NEW_PC` targets use a branch outcome difference
+or distinct controlled jump destinations. FORMAT/OPCODE/FUNCT and IS_BRANCH
+still have no direct template: varying those requires comparing instruction types.
+
+The native targeting regression runs with `CONTRACT_SPIKE_LIB` set. It checks
+that every generated target appears in Spike evidence across deterministic seeds,
+prefixes, suffixes, repetitions and misalignment modes, and checks retirement
+locations for memory targets. This establishes architectural coverage, not
+isolation of timing to one instruction: preparation and shared context remain
+part of the executed test. These changes redistribute fixed testcase budgets;
+retain saved programs when comparing historical runs.
+
+## Controlled branch and jump layouts
+
+The default generator places exactly one target branch/JAL/JALR in each
+control-flow testcase. Setup stays below `0x400`; taken destinations are aligned
+NOP-only addresses from `0x400` through `0xffffff80`. The upper margin prevents
+RV32 wraparound from reaching initialization within the observation window.
+Fall-through executes a 16-slot NOP tail. The existing `31 + maxInstructionCount`
+bound retires the target once and 15 subsequent NOPs on each side. Random suffix
+settings do not change this window. No control-flow target can re-enter setup,
+initializers, another target, or a loop. NOP landing space uses the existing
+instruction-image/default-NOP behavior; architectural addresses are not relocated.
+
+Registers, values and aligned targets remain randomized. Relative branch/JAL
+immediates retain their sign; sign-targeted pairs differ only in the sign bit.
+JALR source values and immediates are chosen together to land in the safe space;
+index/zero-register tests use equal zero operands, while value tests vary the
+prepared source value. Preparation has matching instruction types and length
+on both sides. JALR source/destination overlap remains testable because the
+updated link value is never consumed after the jump. Dedicated branch-outcome
+fixtures prepare taken versus not-taken operands for all six branch types.
+
+RAW/WAW control-flow consumers retain their producer and distances 1–4; JALR
+address preparation happens before the producer. `--reps` generates separate
+control-flow testcase trials, rather than concatenating transfers that could
+skip each other. Compaction likewise keeps control-flow trials separate. The
+requested overall CLI testcase count is unchanged. Random prefixes now exclude
+control flow for all targets so they cannot bypass or revisit the target.
+
+This isolates architectural continuations, not prediction/fetch microarchitecture:
+redirect and instruction-fetch timing remain part of the attacker observation.
+Historical saved programs are unchanged; regenerate corpora to use these layouts.
+
+## State-isolated random suffixes
+
+For non-control targets, `--random-suffix` appends the same 5–24 instruction slots
+to both programs.
+Suffix operands and destinations exclude registers written anywhere in either
+preceding program, including prefix/setup and earlier repetitions. ALU/M
+instructions remain available. Loads and stores use a single aligned scratch
+word at `0x10000000`, initialized by a shared SW before any suffix load. Its LUI
+base register is reserved from later writes. An earlier non-x0-based store might
+alias that word, so memory operations are omitted for those cases. x0-based
+stores have signed 12-bit offsets and cannot alias the scratch word.
+
+Conditional branches and JAL jump only forward to suffix slots. JALR uses a
+reserved AUIPC base established at suffix entry and likewise targets only later
+suffix slots. No jump can skip the setup, enter the target, or create a loop.
+The final suffix slot is NOP. If earlier code contains control flow or the two
+layouts differ, entry into the shared setup cannot be guaranteed, so the suffix
+remains NOP-only. Insufficient free registers also restrict the available kinds
+of instructions. Without the option, the existing five-NOP suffix is unchanged.
+
+These guarantees prevent new architectural differences; they do not promise
+identical timing after a target has changed microarchitectural state. Suffix
+changes alter seeded corpora, so save generated testcase files for reproduction.
 
 ## Controlled dependency generation
 

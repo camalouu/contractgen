@@ -39,8 +39,9 @@ final class RISCVTestGeneratorDependencyTest {
                 assertTrue(atom.isApplicable());
                 var left = ((RISCVProgram) test.getProgram1()).getProgram();
                 var right = ((RISCVProgram) test.getProgram2()).getProgram();
-                var a = left.get(left.size() - 6); // Target followed by five NOPs.
-                var b = right.get(right.size() - 6);
+                int tail = RISCVInstruction.isCONTROL(atom.type()) ? RISCVTestGenerator.CONTROL_NOP_SLOTS : 5;
+                var a = left.get(left.size() - tail - 1);
+                var b = right.get(right.size() - tail - 1);
                 seen.add(atom.observation());
                 switch (atom.observation()) {
                     case RD_IS_ZERO -> { assertEquals(0, a.rd()); assertNotEquals(0, b.rd()); }

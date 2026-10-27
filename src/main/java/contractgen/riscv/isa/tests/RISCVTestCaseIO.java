@@ -109,8 +109,13 @@ public final class RISCVTestCaseIO {
                 continue;
             }
             List<TestCase> groupTests = entry.getValue();
-            for (int start = 0; start < groupTests.size(); start += maxGroupSize) {
-                int end = Math.min(start + maxGroupSize, groupTests.size());
+            // Concatenation changes landing-space contents and can skip later control-flow trials.
+            boolean controlFlow = groupTests.stream().anyMatch(tc ->
+                    ((RISCVProgram) tc.getProgram1()).getProgram().stream().anyMatch(RISCVInstruction::isCONTROL)
+                    || ((RISCVProgram) tc.getProgram2()).getProgram().stream().anyMatch(RISCVInstruction::isCONTROL));
+            int chunkSize = controlFlow ? 1 : maxGroupSize;
+            for (int start = 0; start < groupTests.size(); start += chunkSize) {
+                int end = Math.min(start + chunkSize, groupTests.size());
                 List<TestCase> chunk = groupTests.subList(start, end);
                 List<RISCVInstruction> p1 = new ArrayList<>();
                 List<RISCVInstruction> p2 = new ArrayList<>();
@@ -131,7 +136,7 @@ public final class RISCVTestCaseIO {
                 compacted.add(new RISCVTestCase(
                         new RISCVProgram(registers1, p1),
                         new RISCVProgram(registers2, p2),
-                        Math.max(p1.size(), p2.size()),
+                        controlFlow ? chunk.get(0).getMaxInstructionCount() : Math.max(p1.size(), p2.size()),
                         mergedResult,
                         index
                 ));

@@ -19,6 +19,9 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * The number of registers in the microarchitecture.
      */
     private static final int NUMBER_REGISTERS = 32;
+    static final int CONTROL_NOP_SLOTS = 16;
+    static final long CONTROL_CODE_END = 0x400;
+    static final long CONTROL_LAST_LANDING = 0xffffff80L;
     /**
      * The maximum value of a register.
      */
@@ -229,62 +232,77 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             }
             
             for (RISCV_OBSERVATION_TYPE observation : allowed_observations) {
-                List<RISCVInstruction> p1 = new ArrayList<>();
-                List<RISCVInstruction> p2 = new ArrayList<>();
-                Set<RISCVObservation> targets = new HashSet<>();
-                boolean valid = true;
+                // A transfer ends its observation window; repetitions need separate fresh testcases.
+                int separateCases = instruction.isCONTROL() ? reps : 1;
+                for (int sample = 0; sample < separateCases; sample++) {
+                    List<RISCVInstruction> p1 = new ArrayList<>();
+                    List<RISCVInstruction> p2 = new ArrayList<>();
+                    Set<RISCVObservation> targets = new HashSet<>();
+                    boolean valid = true;
                 
-                for (int i = 0; i < reps; i++) {
-                    List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
+                    for (int i = 0; i < (instruction.isCONTROL() ? 1 : reps); i++) {
+                        List<RISCVInstruction> rprefix = randomPrefix ? randomSequence(r.nextInt(5, 25)) : List.of();
+                        if (!observation.isDependency()
+                                && !new RISCVObservation(type, observation).isApplicable()) {
+                            valid = false;
+                            break;
+                        }
                     
-                    if (!allow_misaligned_memory) {
-                        rprefix = alignMemoryAddresses(rprefix);
-                    }
+                        if (!allow_misaligned_memory) {
+                            rprefix = alignMemoryAddresses(rprefix);
+                        }
                     
-                    Pair<List<RISCVInstruction>, List<RISCVInstruction>> targetInstruction = alterObservation(observation, instruction);
-                    if (targetInstruction == null) {
-                        valid = false;
-                        break;
-                    }
-                    RISCV_TYPE producer = null;
-                    if (observation.isDependency()) {
-                        for (int j = 0; j < targetInstruction.left().size(); j++) {
-                            if (!targetInstruction.left().get(j).equals(targetInstruction.right().get(j))) {
-                                producer = targetInstruction.left().get(j).type();
-                                break;
+                        Pair<List<RISCVInstruction>, List<RISCVInstruction>> targetInstruction = alterObservation(observation, instruction);
+                        if (targetInstruction == null) {
+                            valid = false;
+                            break;
+                        }
+                        RISCV_TYPE producer = null;
+                        if (observation.isDependency()) {
+                            for (int j = 0; j < targetInstruction.left().size(); j++) {
+                                if (!targetInstruction.left().get(j).equals(targetInstruction.right().get(j))) {
+                                    producer = targetInstruction.left().get(j).type();
+                                    break;
+                                }
                             }
                         }
-                    }
-                    targets.add(new RISCVObservation(producer == null ? type : producer, observation, observation.isDependency()));
+                        targets.add(new RISCVObservation(producer == null ? type : producer, observation, observation.isDependency()));
                     
-                    // Dependency setup preserves distances; zeroSourcePair already aligns both zero bases.
-                    if (!observation.isDependency() && observation != RISCV_OBSERVATION_TYPE.RS1_IS_ZERO) {
-                        targetInstruction = alignTargetPair(targetInstruction, !allow_misaligned_memory);
-                    }
+                        // Dependency setup preserves distances; zeroSourcePair already aligns both zero bases.
+                        if (instruction.isCONTROL()) {
+                            targetInstruction = controlledTarget(targetInstruction, observation);
+                            if (targetInstruction == null) { valid = false; break; }
+                            if (0x100L + 4L * (rprefix.size() + targetInstruction.left().size() + CONTROL_NOP_SLOTS)
+                                    > CONTROL_CODE_END) throw new IllegalStateException("Control setup overlaps NOP landing space");
+                        } else if (!observation.isDependency() && observation != RISCV_OBSERVATION_TYPE.RS1_IS_ZERO
+                                && observation != RISCV_OBSERVATION_TYPE.RS1
+                                && observation != RISCV_OBSERVATION_TYPE.RS2
+                                && !isMemoryTarget(observation)) {
+                            targetInstruction = alignTargetPair(targetInstruction, !allow_misaligned_memory);
+                        }
 
-                    List<RISCVInstruction> suffix = randomSuffix
-                            ? safeRandomSequence(r.nextInt(5, 25), targetInstruction.left(), targetInstruction.right())
-                            : nopSequence(5);
+                        if (resetSequence && i > 0) {
+                            p1.addAll(reset);
+                            p2.addAll(reset);
+                        }
 
-                    if (resetSequence && i > 0) {
-                        p1.addAll(reset);
-                        p2.addAll(reset);
+                        p1.addAll(rprefix);
+                        p1.addAll(targetInstruction.left());
+                        p2.addAll(rprefix);
+                        p2.addAll(targetInstruction.right());
+
+                        List<RISCVInstruction> suffix = instruction.isCONTROL() ? nopSequence(CONTROL_NOP_SLOTS)
+                                : randomSuffix ? safeRandomSequence(r.nextInt(5, 25), p1, p2) : nopSequence(5);
+                        p1.addAll(suffix);
+                        p2.addAll(suffix);
                     }
-                    
-                    p1.addAll(rprefix);
-                    p1.addAll(targetInstruction.left());
-                    p1.addAll(suffix);
-                    
-                    p2.addAll(rprefix);
-                    p2.addAll(targetInstruction.right());
-                    p2.addAll(suffix);
-                }
                 
-                if (valid) {
-                    cases.add(new RISCVTestCase(
-                            new RISCVProgram(registers, p1),
-                            new RISCVProgram(registers, p2),
-                            Integer.max(p1.size(), p2.size()), new RISCVTestResult(targets, Set.of(), true, index), index++));
+                    if (valid) {
+                        cases.add(new RISCVTestCase(
+                                new RISCVProgram(registers, p1),
+                                new RISCVProgram(registers, p2),
+                                Integer.max(p1.size(), p2.size()), new RISCVTestResult(targets, Set.of(), true, index), index++));
+                    }
                 }
             }
         }
@@ -388,7 +406,12 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         // another writer between the producer and consumer.
         boolean align = (!allow_misaligned_memory && RISCVInstruction.isMEM(consumer.type()))
                 || consumer.type() == RISCV_TYPE.JALR;
-        if (align) {
+        if (consumer.type() == RISCV_TYPE.JALR) {
+            int base = Objects.equals(consumer.rs1(), dependent) ? result : 0;
+            if (!Objects.equals(consumer.rs1(), dependent) && consumer.rs1() != 0)
+                setRegister(setup, consumer.rs1(), 0);
+            consumer = consumer.cloneAlteringIMM(safeJalrImmediate(base));
+        } else if (align) {
             long imm = consumer.imm();
             if (Objects.equals(consumer.rs1(), dependent)) {
                 imm = (imm & ~3L) | (-result & 3);
@@ -397,7 +420,7 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             } else {
                 setRegister(setup, consumer.rs1(), (int) (-imm & 3));
             }
-            consumer = new RISCVInstruction(consumer.type(), consumer.rd(), consumer.rs1(), consumer.rs2(), imm);
+            consumer = consumer.cloneAlteringIMM(imm);
         }
         setup.addAll(nopSequence(4));
 
@@ -414,6 +437,140 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
         right.addAll(nopSequence(distance - 1));
         left.add(consumer);
         right.add(consumer);
+        return new Pair<>(left, right);
+    }
+
+    /** Only the final transfer may diverge; every possible destination is NOP-only. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> controlledTarget(
+            Pair<List<RISCVInstruction>, List<RISCVInstruction>> pair, RISCV_OBSERVATION_TYPE observation) {
+        var a = pair.left().get(pair.left().size() - 1);
+        var b = pair.right().get(pair.right().size() - 1);
+        if (a.type() == RISCV_TYPE.JALR) {
+            if (observation.isDependency()) return pair; // Address fixed in dependencyPair, before its producer.
+            return controlledJalr(a, b, pair, observation);
+        }
+        int signBit = a.type() == RISCV_TYPE.JAL ? 20 : 12;
+        long magnitude = controlOffset(signBit);
+        long immA = magnitude | (a.imm() & (1L << signBit));
+        long immB = magnitude | (b.imm() & (1L << signBit));
+        if ((observation == RISCV_OBSERVATION_TYPE.IMM || observation == RISCV_OBSERVATION_TYPE.NEW_PC)
+                && !a.imm().equals(b.imm())) {
+            do { immB = controlOffset(signBit) | (b.imm() & (1L << signBit)); } while (immB == immA);
+        }
+        var left = new ArrayList<>(pair.left());
+        var right = new ArrayList<>(pair.right());
+        left.set(left.size() - 1, a.cloneAlteringIMM(immA));
+        right.set(right.size() - 1, b.cloneAlteringIMM(immB));
+        return new Pair<>(left, right);
+    }
+
+    private long controlOffset(int signBit) {
+        // Flipping the sign bit must also land behind all setup, never just a few bytes back.
+        return signBit == 12 ? 4L * r.nextInt(512, 769) : 4L * r.nextInt(1024, 131073);
+    }
+
+    static boolean isControlLanding(int address) {
+        long pc = Integer.toUnsignedLong(address);
+        return (pc & 3) == 0 && pc >= CONTROL_CODE_END && pc <= CONTROL_LAST_LANDING;
+    }
+
+    private long safeJalrImmediate(int base) {
+        int start = r.nextInt(1024);
+        for (int i = 0; i < 1024; i++) {
+            int encoded = (((start + i) & 1023) << 2) | (-base & 3);
+            if (isControlLanding(base + (encoded << 20 >> 20))) return (long) encoded;
+        }
+        throw new IllegalStateException("No isolated JALR landing for base " + base);
+    }
+
+    private int controlBase(long immediate) {
+        int base;
+        do {
+            base = types.contains(RISCV_TYPE.LUI) ? r.nextInt() & ~3 : -4 * r.nextInt(64, 513);
+        } while (!isControlLanding(base + ((int) immediate << 20 >> 20)));
+        return base;
+    }
+
+    private void loadControlRegister(List<RISCVInstruction> program, int register, int value) {
+        if (register == 0) return;
+        // Fixed instruction shape on both sides, even if only one value fits in ADDI.
+        if (types.contains(RISCV_TYPE.LUI)) {
+            int low = value << 20 >> 20;
+            program.add(RISCVInstruction.LUI(register, Integer.toUnsignedLong(value - low)));
+            program.add(RISCVInstruction.ADDI(register, register, low));
+        } else program.add(RISCVInstruction.ADDI(register, 0, value));
+    }
+
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> controlledJalr(
+            RISCVInstruction a, RISCVInstruction b, Pair<List<RISCVInstruction>, List<RISCVInstruction>> original,
+            RISCV_OBSERVATION_TYPE observation) {
+        if (!types.contains(RISCV_TYPE.ADDI)) return null;
+        if (observation == RISCV_OBSERVATION_TYPE.REG_RS1 && a.rs1() == 0) return null;
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        long immA = a.imm() & ~3L, immB = b.imm() & ~3L;
+        if (observation == RISCV_OBSERVATION_TYPE.RS1_IS_ZERO) {
+            left.addAll(original.left().subList(0, original.left().size() - 1));
+            right.addAll(original.right().subList(0, original.right().size() - 1));
+            immA = immB = 4L * r.nextInt(256, 481);
+        } else {
+            boolean zeroBases = observation == RISCV_OBSERVATION_TYPE.RS1
+                    || observation == RISCV_OBSERVATION_TYPE.IMM
+                    || observation == RISCV_OBSERVATION_TYPE.IMM_IS_NEGATIVE
+                    || observation == RISCV_OBSERVATION_TYPE.NEW_PC || a.rs1() == 0;
+            if (zeroBases) {
+                long magnitude = 4L * r.nextInt(256, 481);
+                immA = magnitude | (a.imm() & 2048);
+                immB = magnitude | (b.imm() & 2048);
+                if ((observation == RISCV_OBSERVATION_TYPE.IMM || observation == RISCV_OBSERVATION_TYPE.NEW_PC)
+                && !a.imm().equals(b.imm())) {
+                    do { immB = 4L * r.nextInt(256, 481) | (b.imm() & 2048); } while (immA == immB);
+                }
+                for (int register : new LinkedHashSet<>(List.of(a.rs1(), b.rs1()))) {
+                    loadControlRegister(left, register, 0);
+                    loadControlRegister(right, register, 0);
+                }
+            } else {
+                int baseA = controlBase(immA), baseB = baseA;
+                if (observation == RISCV_OBSERVATION_TYPE.REG_RS1_ZERO
+                        || observation == RISCV_OBSERVATION_TYPE.REG_RS1_LOG2) {
+                    immA = immB = 4L * r.nextInt(256, 481);
+                    baseA = 0;
+                    baseB = -2048;
+                } else if (observation == RISCV_OBSERVATION_TYPE.REG_RS1) {
+                    do { baseB = controlBase(immB); } while (baseB == baseA);
+                }
+                loadControlRegister(left, a.rs1(), baseA);
+                loadControlRegister(right, b.rs1(), baseB);
+            }
+            left.addAll(nopSequence(4));
+            right.addAll(nopSequence(4));
+        }
+        left.add(a.cloneAlteringIMM(immA));
+        right.add(b.cloneAlteringIMM(immB));
+        return new Pair<>(left, right);
+    }
+
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> branchOutcomePair(RISCVInstruction instruction) {
+        if (!instruction.isBRANCH() || !types.contains(RISCV_TYPE.ADDI)) return null;
+        int rs1 = r.nextInt(1, NUMBER_REGISTERS), rs2;
+        do { rs2 = r.nextInt(1, NUMBER_REGISTERS); } while (rs2 == rs1);
+        int pivot = types.contains(RISCV_TYPE.LUI) ? r.nextInt(1, 1000000) : 1;
+        int taken, notTaken, other;
+        switch (instruction.type()) {
+            case BEQ -> { taken = pivot; notTaken = pivot ^ 1; other = pivot; }
+            case BNE -> { taken = pivot ^ 1; notTaken = pivot; other = pivot; }
+            case BLT, BLTU -> { taken = pivot - 1; notTaken = pivot + 1; other = pivot; }
+            case BGE, BGEU -> { taken = pivot + 1; notTaken = pivot - 1; other = pivot; }
+            default -> throw new IllegalStateException();
+        }
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        loadControlRegister(left, rs1, taken);
+        loadControlRegister(right, rs1, notTaken);
+        loadControlRegister(left, rs2, other);
+        loadControlRegister(right, rs2, other);
+        left.addAll(nopSequence(4)); right.addAll(nopSequence(4));
+        var branch = new RISCVInstruction(instruction.type(), null, rs1, rs2, instruction.imm());
+        left.add(branch); right.add(branch);
         return new Pair<>(left, right);
     }
 
@@ -466,101 +623,255 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
             case RD -> {
                 if (instruction.rd() == null) yield null;
                 RISCVInstruction ins1 = instruction.cloneAlteringRD(r.nextInt(1, NUMBER_REGISTERS));
-                RISCVInstruction ins2 = instruction.cloneAlteringRD(r.nextInt(1, NUMBER_REGISTERS));
+                RISCVInstruction ins2 = instruction.cloneAlteringRD(differentRegister(ins1.rd(), false));
                 yield new Pair<>(List.of(ins1), List.of(ins2));
             }
-            case RS1 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction ins1 = instruction.cloneAlteringRS1(r.nextInt(NUMBER_REGISTERS));
-                RISCVInstruction ins2 = instruction.cloneAlteringRS1(r.nextInt(NUMBER_REGISTERS));
-                yield new Pair<>(List.of(ins1), List.of(ins2));
-            }
-            case RS2 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction ins1 = instruction.cloneAlteringRS2(r.nextInt(NUMBER_REGISTERS));
-                RISCVInstruction ins2 = instruction.cloneAlteringRS2(r.nextInt(NUMBER_REGISTERS));
-                yield new Pair<>(List.of(ins1), List.of(ins2));
-            }
+            case RS1, RS2 -> sourceIndexPair(type, instruction);
             case IMM -> {
                 if (instruction.imm() == null) yield null;
-                long imm_1 = randomImmediate(getBound(instruction));
-                long imm_2 = randomImmediate(getBound(instruction));
-                if (instruction.type().getFormat() == RISCV_FORMAT.BTYPE || instruction.type() == RISCV_TYPE.JAL || instruction.type() == RISCV_TYPE.JALR) {
-                    imm_1 = imm_1 / 4 * 4;
-                    imm_2 = imm_2 / 4 * 4;
-                }
+                long imm_1 = targetImmediate(instruction), imm_2;
+                do { imm_2 = targetImmediate(instruction); } while (imm_1 == imm_2);
                 RISCVInstruction ins1 = instruction.cloneAlteringIMM(imm_1);
                 RISCVInstruction ins2 = instruction.cloneAlteringIMM(imm_2);
                 yield new Pair<>(List.of(ins1), List.of(ins2));
             }
-            case REG_RS1 -> {
-                if (instruction.rs1() == null) yield null;
-                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs1(), 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs1(), 0, randomImmediate(MAX_IMM_I));
-                yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
-            }
-            case REG_RS2 -> {
-                if (instruction.rs2() == null) yield null;
-                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs2(), 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, randomImmediate(MAX_IMM_I));
-                yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
-            }
-            case REG_RS2_LOW5 -> {
-                if (!instruction.hasArchitecturalRS2() || instruction.rs2() == 0) yield null;
-                long value1 = randomImmediate(MAX_IMM_I);
-                long value2 = value1 ^ 1L;
-                RISCVInstruction ins1 = RISCVInstruction.ADDI(instruction.rs2(), 0, value1);
-                RISCVInstruction ins2 = RISCVInstruction.ADDI(instruction.rs2(), 0, value2);
-                yield new Pair<>(List.of(ins1, instruction), List.of(ins2, instruction));
-            }
-            case MEM_ADDR -> {
-                if (instruction.rs1() == null) yield null;
-                long address = randomImmediate(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction instr_addr = RISCVInstruction.ADDI(instruction.rs1(), 0, address);
-                RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs1(), 31, 0);
-                RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs1(), 30, 0);
-                yield new Pair<>(List.of(val1, val2, instr_addr, ins1, instruction), List.of(val1, val2, instr_addr, ins2, instruction));
-            }
-            case MEM_W_DATA -> {
-                if (instruction.rs2() == null) yield null;
-                long address = randomImmediate(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction instr_addr = RISCVInstruction.ADDI(instruction.rs2(), 0, address);
-                RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs2(), 31, 0);
-                RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs2(), 30, 0);
-                yield new Pair<>(List.of(val1, val2, instr_addr, ins1, instruction), List.of(val1, val2, instr_addr, ins2, instruction));
-            }
-            case REG_RD -> {
-                if (instruction.rd() == null) yield null;
-                RISCVInstruction ins1 = instruction.cloneAlteringRD(r.nextInt(NUMBER_REGISTERS));
-                RISCVInstruction ins2 = instruction.cloneAlteringRD(r.nextInt(NUMBER_REGISTERS));
-                yield new Pair<>(List.of(ins1), List.of(ins2));
-            }
-            case MEM_R_DATA -> {
-                if (instruction.imm() == null || instruction.rs1() == null) yield null;
-                long address = randomImmediate(MAX_IMM_I);
-                RISCVInstruction val1 = RISCVInstruction.ADDI(31, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction val2 = RISCVInstruction.ADDI(30, 0, randomImmediate(MAX_IMM_I));
-                RISCVInstruction instr_addr_1 = RISCVInstruction.ADDI(instruction.rs1(), 0, address);
-                RISCVInstruction ins1 = RISCVInstruction.SW(instruction.rs1(), 31, 0);
-                RISCVInstruction ins2 = RISCVInstruction.SW(instruction.rs1(), 30, 0);
-                RISCVInstruction instr_addr_2 = RISCVInstruction.ADDI(instruction.rs1(), instruction.rs1(), instruction.imm());
-                yield new Pair<>(List.of(val1, val2, instr_addr_1, ins1, instr_addr_2, instruction), List.of(val1, val2, instr_addr_1, ins2, instr_addr_2, instruction));
-            }
+            case REG_RS1, REG_RS2, REG_RS2_LOW5, REG_RS1_ZERO, REG_RS2_ZERO,
+                    REG_RS1_LOG2, REG_RS2_LOG2 -> operandValuePair(type, instruction);
+            case REG_RD, REG_RD_ZERO, REG_RD_LOG2 -> resultValuePair(type, instruction);
+            case MEM_ADDR, MEM_R_DATA, MEM_W_DATA, IS_ALIGNED, IS_HALF_ALIGNED ->
+                    memoryPair(type, instruction);
             case IS_BRANCH -> null;
-            case BRANCH_TAKEN -> null;
-            case IS_ALIGNED -> null;
-            case IS_HALF_ALIGNED -> null;
-            case NEW_PC -> null;
+            case BRANCH_TAKEN -> branchOutcomePair(instruction);
+            case NEW_PC -> instruction.isBRANCH() ? branchOutcomePair(instruction)
+                    : alterObservation(RISCV_OBSERVATION_TYPE.IMM, instruction);
             case RAW_RS1_1, RAW_RS1_2, RAW_RS1_3, RAW_RS1_4,
                     RAW_RS2_1, RAW_RS2_2, RAW_RS2_3, RAW_RS2_4 ->
                     dependencyPair(type, instruction);
             case WAW_1, WAW_2, WAW_3, WAW_4 -> dependencyPair(type, instruction);
-            case REG_RS1_ZERO, REG_RS1_LOG2, REG_RS2_ZERO, REG_RS2_LOG2, REG_RD_ZERO, REG_RD_LOG2 -> null;
         };
+    }
+
+    private int differentRegister(int original, boolean allowZero) {
+        int register;
+        do { register = r.nextInt(allowZero ? 0 : 1, NUMBER_REGISTERS); } while (register == original);
+        return register;
+    }
+
+    private int scratchRegister(RISCVInstruction instruction, int... reserved) {
+        for (int register = 1; register < NUMBER_REGISTERS; register++) {
+            if (Objects.equals(register, instruction.rd()) || Objects.equals(register, instruction.rs1())
+                    || Objects.equals(register, instruction.rs2())) continue;
+            boolean used = false;
+            for (int other : reserved) used |= register == other;
+            if (!used) return register;
+        }
+        throw new IllegalStateException("No scratch register");
+    }
+
+    private long targetImmediate(RISCVInstruction instruction) {
+        long immediate = randomImmediate(getBound(instruction));
+        if (instruction.type().getFormat() == RISCV_FORMAT.UTYPE) immediate &= ~4095L;
+        if (instruction.isCONTROL() || (!allow_misaligned_memory && instruction.isMEM())) immediate &= ~3L;
+        return immediate;
+    }
+
+    /** Equal instruction shapes prevent value setup from introducing FORMAT differences. */
+    private void setRegisterPair(List<RISCVInstruction> left, List<RISCVInstruction> right,
+                                 int register, int a, int b) {
+        if (register == 0) throw new IllegalArgumentException("Cannot prepare x0");
+        if (types.contains(RISCV_TYPE.LUI)) {
+            int lowA = a << 20 >> 20, lowB = b << 20 >> 20;
+            left.add(RISCVInstruction.LUI(register, Integer.toUnsignedLong(a - lowA)));
+            right.add(RISCVInstruction.LUI(register, Integer.toUnsignedLong(b - lowB)));
+            left.add(RISCVInstruction.ADDI(register, register, lowA));
+            right.add(RISCVInstruction.ADDI(register, register, lowB));
+        } else {
+            if (a != (a << 20 >> 20) || b != (b << 20 >> 20))
+                throw new IllegalArgumentException("Value needs LUI");
+            left.add(RISCVInstruction.ADDI(register, 0, a));
+            right.add(RISCVInstruction.ADDI(register, 0, b));
+        }
+    }
+
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> finishValuePair(
+            List<RISCVInstruction> left, List<RISCVInstruction> right,
+            RISCVInstruction a, RISCVInstruction b) {
+        left.addAll(nopSequence(4)); right.addAll(nopSequence(4));
+        left.add(a); right.add(b);
+        return new Pair<>(left, right);
+    }
+
+    /** Change a source register number while preserving its value and the other operands. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> sourceIndexPair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        boolean first = observation == RISCV_OBSERVATION_TYPE.RS1;
+        if (first ? instruction.rs1() == null : instruction.rs2() == null) return null;
+        if (!first && !instruction.hasArchitecturalRS2()) {
+            // Structural RS2 also names the shift-immediate field; it is not a register read.
+            int a = r.nextInt(NUMBER_REGISTERS), b = differentRegister(a, true);
+            return new Pair<>(List.of(instruction.cloneAlteringRS2(a)),
+                    List.of(instruction.cloneAlteringRS2(b)));
+        }
+        if (!types.contains(RISCV_TYPE.ADDI)) return null;
+        List<Integer> candidates = new ArrayList<>();
+        for (int register = 1; register < NUMBER_REGISTERS; register++) {
+            if (!Objects.equals(register, instruction.rd()) && !Objects.equals(register, instruction.rs1())
+                    && !Objects.equals(register, instruction.rs2())) candidates.add(register);
+        }
+        // Dedicated RS*_IS_ZERO templates cover x0 with equal zero-valued operands.
+        int a = candidates.remove(r.nextInt(candidates.size()));
+        int b = candidates.get(r.nextInt(candidates.size()));
+        int value = dependencyValue();
+        boolean align = instruction.isMEM() && !allow_misaligned_memory;
+        if (align && first) value &= ~3;
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        setRegisterPair(left, right, a, value, value);
+        setRegisterPair(left, right, b, value, value);
+        if (align) {
+            instruction = instruction.cloneAlteringIMM(instruction.imm() & ~3L);
+            if (!first && instruction.rs1() != 0) {
+                var helper = RISCVInstruction.ANDI(instruction.rs1(), instruction.rs1(), MAX_IMM_I - 4);
+                left.add(helper); right.add(helper);
+            }
+        }
+        return finishValuePair(left, right,
+                first ? instruction.cloneAlteringRS1(a) : instruction.cloneAlteringRS2(a),
+                first ? instruction.cloneAlteringRS1(b) : instruction.cloneAlteringRS2(b));
+    }
+
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> operandValuePair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        boolean first = observation.name().startsWith("REG_RS1");
+        if (!types.contains(RISCV_TYPE.ADDI)
+                || (first ? instruction.rs1() == null : !instruction.hasArchitecturalRS2())) return null;
+        int register = scratchRegister(instruction);
+        instruction = first ? instruction.cloneAlteringRS1(register) : instruction.cloneAlteringRS2(register);
+        int a = dependencyValue(), b;
+        if (observation.name().endsWith("_ZERO")) {
+            a = 0;
+            do { b = dependencyValue(); } while (b == 0);
+        } else if (observation.name().endsWith("_LOG2")) {
+            a = 1 << r.nextInt(types.contains(RISCV_TYPE.LUI) ? 31 : 5);
+            do { b = dependencyValue(); } while (b == 0 || Integer.numberOfLeadingZeros(a) == Integer.numberOfLeadingZeros(b));
+        } else if (observation == RISCV_OBSERVATION_TYPE.REG_RS2_LOW5) {
+            b = a ^ (1 << r.nextInt(5));
+        } else {
+            do { b = dependencyValue(); } while (a == b);
+        }
+        if (first && !allow_misaligned_memory && instruction.isMEM()) {
+            a &= ~3; b &= ~3;
+            // Alignment must preserve the requested value/zero/log2 distinction.
+            if (a == b || (observation == RISCV_OBSERVATION_TYPE.REG_RS1_LOG2
+                    && Integer.numberOfLeadingZeros(a) == Integer.numberOfLeadingZeros(b))) { a = 0; b = 4; }
+        }
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        setRegisterPair(left, right, register, a, b);
+        return finishValuePair(left, right, instruction, instruction);
+    }
+
+    private static boolean isMemoryTarget(RISCV_OBSERVATION_TYPE observation) {
+        return switch (observation) {
+            case MEM_ADDR, MEM_R_DATA, MEM_W_DATA, IS_ALIGNED, IS_HALF_ALIGNED -> true;
+            default -> false;
+        };
+    }
+
+    /** Prepare the actual accessed location; all scratch registers exclude target operands. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> memoryPair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        if (!instruction.isMEM() || !types.contains(RISCV_TYPE.ADDI)) return null;
+        boolean load = RISCVInstruction.isLOAD(instruction.type());
+        if ((observation == RISCV_OBSERVATION_TYPE.MEM_R_DATA && !load)
+                || (observation == RISCV_OBSERVATION_TYPE.MEM_W_DATA && load)) return null;
+        int width = switch (instruction.type()) {
+            case LW, SW -> 4;
+            case LH, LHU, SH -> 2;
+            default -> 1;
+        };
+        boolean alignment = observation == RISCV_OBSERVATION_TYPE.IS_ALIGNED
+                || observation == RISCV_OBSERVATION_TYPE.IS_HALF_ALIGNED;
+        int offset = observation == RISCV_OBSERVATION_TYPE.IS_HALF_ALIGNED ? 3 : 2;
+        if (alignment && !allow_misaligned_memory && offset % width != 0) return null;
+        if (load && !types.contains(RISCV_TYPE.SW)) return null;
+        int base = scratchRegister(instruction), data = scratchRegister(instruction, base);
+        int address = 4 * r.nextInt(-256, 256);
+        int targetOffset = alignment ? offset
+                : observation == RISCV_OBSERVATION_TYPE.MEM_ADDR ? 4 : 0;
+        int valueA = 0, valueB = 0;
+        boolean result = observation == RISCV_OBSERVATION_TYPE.REG_RD
+                || observation == RISCV_OBSERVATION_TYPE.REG_RD_ZERO
+                || observation == RISCV_OBSERVATION_TYPE.REG_RD_LOG2;
+        if (result) {
+            do { valueB = dependencyValue(); } while ((valueB & (width == 1 ? 255 : width == 2 ? 65535 : -1)) == 0);
+        } else if (observation == RISCV_OBSERVATION_TYPE.MEM_R_DATA
+                || observation == RISCV_OBSERVATION_TYPE.MEM_W_DATA) {
+            valueA = dependencyValue();
+            do { valueB = dependencyValue(); } while ((valueA & (width == 1 ? 255 : width == 2 ? 65535 : -1))
+                    == (valueB & (width == 1 ? 255 : width == 2 ? 65535 : -1)));
+        }
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        setRegisterPair(left, right, base, address, address);
+        setRegisterPair(left, right, data, valueA, valueB);
+        if (load) {
+            // Initialize through the same base and offset that the target load will use.
+            if (alignment) {
+                // Byte stores can initialize either alignment without requiring a misaligned SW.
+                if (!types.contains(RISCV_TYPE.SB)) return null;
+                for (int i = 0; i < width + targetOffset; i++) {
+                    left.add(RISCVInstruction.SB(base, data, i));
+                    right.add(RISCVInstruction.SB(base, data, i));
+                }
+            } else {
+                left.add(RISCVInstruction.SW(base, data, 0));
+                right.add(RISCVInstruction.SW(base, data, 0));
+                if (targetOffset != 0) {
+                    left.add(RISCVInstruction.SW(base, data, targetOffset));
+                    right.add(RISCVInstruction.SW(base, data, targetOffset));
+                }
+            }
+        }
+        instruction = instruction.cloneAlteringRS1(base).cloneAlteringIMM(0L);
+        if (!load) instruction = instruction.cloneAlteringRS2(data);
+        return finishValuePair(left, right, instruction, instruction.cloneAlteringIMM((long) targetOffset));
+    }
+
+    /** Choose operands with a known zero/nonzero result, keeping the destination fixed. */
+    private Pair<List<RISCVInstruction>, List<RISCVInstruction>> resultValuePair(
+            RISCV_OBSERVATION_TYPE observation, RISCVInstruction instruction) {
+        if (instruction.rd() == null || !types.contains(RISCV_TYPE.ADDI) || instruction.isCONTROL()) return null;
+        if (RISCVInstruction.isLOAD(instruction.type()))
+            return memoryPair(observation, instruction);
+        List<RISCVInstruction> left = new ArrayList<>(), right = new ArrayList<>();
+        if (instruction.type().getFormat() == RISCV_FORMAT.UTYPE) {
+            if (instruction.type() == RISCV_TYPE.AUIPC && observation == RISCV_OBSERVATION_TYPE.REG_RD_ZERO) return null;
+            long nonzero = types.contains(RISCV_TYPE.LUI) ? 0x80000000L : 4096L;
+            return finishValuePair(left, right, instruction.cloneAlteringIMM(0L), instruction.cloneAlteringIMM(nonzero));
+        }
+        int source1 = scratchRegister(instruction), source2 = scratchRegister(instruction, source1);
+        int a = 0, b = 1, other;
+        do { other = dependencyValue(); } while (other == 0);
+        switch (instruction.type()) {
+            case AND, ANDI -> b = -1;
+            case OR, ORI, XOR, XORI, ADD, ADDI, SUB -> b = 0;
+            case SLL, SLLI, SRL, SRLI, SRA, SRAI -> b = 0;
+            case SLT, SLTI, SLTU, SLTIU -> { a = 1; other = 0; }
+            case MULH -> { b = Integer.MIN_VALUE; other = Integer.MIN_VALUE; }
+            case MULHSU, MULHU -> { b = -1; other = -1; }
+            case REM, REMU -> { b = 2; other = 1; }
+            default -> { } // MUL and DIV use multiplication/division by one.
+        }
+        // High-half multiplication witnesses require full-width constants.
+        if (!types.contains(RISCV_TYPE.LUI)
+                && (instruction.type() == RISCV_TYPE.MULH || instruction.type() == RISCV_TYPE.MULHSU
+                || instruction.type() == RISCV_TYPE.MULHU)) return null;
+        setRegisterPair(left, right, source1, a, other);
+        instruction = instruction.cloneAlteringRS1(source1);
+        if (instruction.hasArchitecturalRS2()) {
+            setRegisterPair(left, right, source2, b, b);
+            instruction = instruction.cloneAlteringRS2(source2);
+        } else if (instruction.rs2() != null) instruction = instruction.cloneAlteringRS2(b & 31);
+        else instruction = instruction.cloneAlteringIMM((long) b);
+        return finishValuePair(left, right, instruction, instruction);
     }
 
     /** Read x0 versus an ordinary register holding zero, with the same operand value. */
@@ -604,75 +915,78 @@ public class RISCVTestGenerator implements RISCVTestGenearatorInterface {
      * @return A sequence of given length of random instructions.
      */
     private List<RISCVInstruction> randomSequence(int size) {
+        // Prefixes must reach the target once, rather than escape or re-enter it.
+        var candidates = types.stream().filter(type -> !RISCVInstruction.isCONTROL(type)).toList();
+        if (candidates.isEmpty()) return nopSequence(size);
         List<RISCVInstruction> result = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            RISCV_TYPE type = types.get(r.nextInt(types.size() - 1));
-            RISCVInstruction instruction = randomInstructionFromType(type);
-            // ensure jalr are always aligned
-            if (type == RISCV_TYPE.JALR) {
-                result.add(RISCVInstruction.ANDI(instruction.rs1(), instruction.rs1(), MAX_IMM_I - 4));
-                i++;
-            }
-            result.add(instruction);
-        }
+        for (int i = 0; i < size; i++)
+            result.add(randomInstructionFromType(candidates.get(r.nextInt(candidates.size()))));
         return result;
     }
 
-    /**
-     * Generates a shared suffix that cannot introduce memory accesses or change
-     * control flow. The suffix only uses non-zero registers that neither target
-     * sequence writes, so a value difference created by the target is not
-     * consumed or overwritten by the suffix. This also prevents dependency
-     * observations at the target/suffix boundary from matching a target
-     * destination register on only one side.
-     *
-     * <p>If the target itself contains a control-flow instruction, subsequent
-     * dynamic instructions are not guaranteed to stay synchronized. In that
-     * case the safest suffix is NOP-only.</p>
-     */
+    /** Shared suffix: no earlier written registers, private memory, forward-only control flow. */
     List<RISCVInstruction> safeRandomSequence(
-            int size,
-            List<RISCVInstruction> target1,
-            List<RISCVInstruction> target2
-    ) {
-        if (Stream.concat(target1.stream(), target2.stream()).anyMatch(RISCVInstruction::isCONTROL)) {
+            int size, List<RISCVInstruction> history1, List<RISCVInstruction> history2) {
+        // Divergent paths may enter a suffix at different PCs or skip its setup.
+        if (size < 5 || history1.size() != history2.size()
+                || Stream.concat(history1.stream(), history2.stream()).anyMatch(RISCVInstruction::isCONTROL)) {
             return nopSequence(size);
         }
-
-        Set<Integer> writtenByTarget = Stream.concat(target1.stream(), target2.stream())
-                .filter(RISCVInstruction::hasRD)
-                .map(RISCVInstruction::rd)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        List<Integer> safeRegisters = Stream.iterate(1, register -> register + 1)
-                .limit(NUMBER_REGISTERS - 1L)
-                .filter(register -> !writtenByTarget.contains(register))
-                .toList();
-        List<RISCV_TYPE> safeTypes = types.stream()
-                .filter(candidate -> !RISCVInstruction.isMEM(candidate))
-                .filter(candidate -> !RISCVInstruction.isCONTROL(candidate))
-                .toList();
-
-        if (safeRegisters.isEmpty() || safeTypes.isEmpty()) {
-            return nopSequence(size);
-        }
+        Set<Integer> written = Stream.concat(history1.stream(), history2.stream())
+                .filter(RISCVInstruction::hasRD).map(RISCVInstruction::rd)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        List<Integer> registers = Stream.iterate(1, register -> register + 1)
+                .limit(NUMBER_REGISTERS - 1L).filter(register -> !written.contains(register))
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (registers.isEmpty()) return nopSequence(size);
 
         List<RISCVInstruction> result = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            RISCV_TYPE type = safeTypes.get(r.nextInt(safeTypes.size()));
+        Integer jumpBase = null, memoryBase = null;
+        if (registers.size() >= 2 && types.containsAll(List.of(RISCV_TYPE.AUIPC, RISCV_TYPE.JALR))) {
+            jumpBase = registers.remove(r.nextInt(registers.size()));
+            result.add(RISCVInstruction.AUIPC(jumpBase, 0));
+        }
+        // x0-based stores cannot reach the scratch word at 0x10000000 with a 12-bit offset.
+        // Any other earlier store may alias it, so omit memory operations in that case.
+        boolean privateMemory = Stream.concat(history1.stream(), history2.stream())
+                .filter(i -> RISCVInstruction.isSTORE(i.type())).allMatch(i -> i.rs1() == 0);
+        if (privateMemory && registers.size() >= 2
+                && types.containsAll(List.of(RISCV_TYPE.LUI, RISCV_TYPE.SW))) {
+            memoryBase = registers.remove(r.nextInt(registers.size()));
+            result.add(RISCVInstruction.LUI(memoryBase, 0x10000000L));
+            result.add(RISCVInstruction.SW(memoryBase, 0, 0)); // Initialize before any suffix load.
+        }
+        final Integer memory = memoryBase, jump = jumpBase;
+        List<RISCV_TYPE> candidates = types.stream()
+                .filter(t -> !RISCVInstruction.isMEM(t) || memory != null)
+                .filter(t -> t != RISCV_TYPE.JALR || jump != null).toList();
+        if (candidates.isEmpty()) return nopSequence(size);
+        while (result.size() < size - 1) {
+            int position = result.size();
+            RISCV_TYPE type = candidates.get(r.nextInt(candidates.size()));
             RISCVInstruction instruction = randomInstructionFromType(type);
-            if (instruction.hasRD()) {
-                instruction = instruction.cloneAlteringRD(randomElement(safeRegisters));
-            }
-            if (instruction.hasRS1()) {
-                instruction = instruction.cloneAlteringRS1(randomElement(safeRegisters));
-            }
-            if (instruction.hasRS2()) {
-                instruction = instruction.cloneAlteringRS2(randomElement(safeRegisters));
+            if (instruction.hasRD()) instruction = instruction.cloneAlteringRD(randomElement(registers));
+            if (instruction.hasRS1()) instruction = instruction.cloneAlteringRS1(randomElement(registers));
+            if (instruction.hasRS2()) instruction = instruction.cloneAlteringRS2(randomElement(registers));
+            if (instruction.isMEM()) {
+                int width = switch (type) {
+                    case LW, SW -> 4;
+                    case LH, LHU, SH -> 2;
+                    default -> 1;
+                };
+                instruction = instruction.cloneAlteringRS1(memory)
+                        .cloneAlteringIMM((long) (r.nextInt(4 / width) * width));
+            } else if (instruction.isCONTROL()) {
+                int target = r.nextInt(position + 1, size); // Never setup, target code, or a loop.
+                instruction = instruction.cloneAlteringIMM(4L * (target - position));
+                if (type == RISCV_TYPE.JALR) {
+                    // AUIPC is the first suffix instruction; its value anchors all JALR targets.
+                    instruction = instruction.cloneAlteringRS1(jump).cloneAlteringIMM(4L * target);
+                }
             }
             result.add(instruction);
         }
+        result.add(RISCVInstruction.NOP()); // Every forward path has an in-suffix landing slot.
         return result;
     }
 

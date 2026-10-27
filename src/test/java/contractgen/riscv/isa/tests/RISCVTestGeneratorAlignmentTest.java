@@ -47,10 +47,11 @@ final class RISCVTestGeneratorAlignmentTest {
             for (var test : generator.generate()) {
                 var left = ((RISCVProgram) test.getProgram1()).getProgram();
                 var right = ((RISCVProgram) test.getProgram2()).getProgram();
-                assertEquals(11, left.size()); // Zero prefill, four NOPs, target, five NOPs.
+                int size = left.get(5).isCONTROL() ? 6 + RISCVTestGenerator.CONTROL_NOP_SLOTS : 11;
+                assertEquals(size, left.size()); // Shared zero prefill, four NOPs, target, landing NOPs.
                 assertEquals(left.size(), right.size());
                 assertEquals(left.subList(0, 5), right.subList(0, 5));
-                assertEquals(left.subList(6, 11), right.subList(6, 11));
+                assertEquals(left.subList(6, size), right.subList(6, size));
                 assertEquals(left.get(5).cloneAlteringRS1(right.get(5).rs1()), right.get(5));
                 if (RISCVInstruction.isMEM(left.get(5).type()) || left.get(5).type() == RISCV_TYPE.JALR)
                     assertEquals(0, left.get(5).imm() & 3L);

@@ -196,19 +196,19 @@ class Synthesize implements Callable<Integer> {
     @Option(names = {"--verilator"}, description = "Use Verilator for simulation. Applies to IBEX.")
     boolean useVerilator = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add a state-isolated random suffix with private memory and forward-only control flow", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
     boolean resetSequence = false;
 
-    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    @Option(names = {"--reps"}, description = "Number of atom trials; control-flow trials use separate testcases.", defaultValue = "1")
     int reps = 1;
     
     @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
     boolean bitDist = false;
     
-    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
+    @Option(names = {"--random-prefix"}, description = "Add random non-control instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
     @Override
@@ -353,19 +353,19 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"--instruction"}, description = "Always leak the instruction and the PC.")
     boolean leakInstruction;
 
-    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom")
+    @Option(names = {"--random-suffix"}, description = "Add a state-isolated random suffix with private memory and forward-only control flow")
     boolean randomSuffix;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions")
     boolean resetSequence;
 
-    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    @Option(names = {"--reps"}, description = "Number of atom trials; control-flow trials use separate testcases.", defaultValue = "1")
     int reps;
 
     @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates")
     boolean bitDist;
 
-    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom")
+    @Option(names = {"--random-prefix"}, description = "Add random non-control instructions before the target atom")
     boolean randomPrefix;
 
     @Option(names = {"--spike-lib"}, description = "Path to libcontract_spike_atom.so. Defaults to CONTRACT_SPIKE_LIB or riscv-isa-sim/build/libcontract_spike_atom.so")
@@ -928,16 +928,16 @@ class ExportTests implements Callable<Integer> {
     @Option(names = {"--verilator"}, description = "Use Verilator for simulation. Applies to IBEX.")
     boolean useVerilator = false;
 
-    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    @Option(names = {"--reps"}, description = "Number of atom trials; control-flow trials use separate testcases.", defaultValue = "1")
     int reps = 1;
 
     @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
     boolean bitDist = false;
 
-    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
+    @Option(names = {"--random-prefix"}, description = "Add random non-control instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add a state-isolated random suffix with private memory and forward-only control flow", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
@@ -1790,16 +1790,16 @@ class CompareSpikeRvfiAtoms implements Callable<Integer> {
     @Option(names = {"--sp"}, description = "Only consider identical programs (same program mode)")
     boolean isSP = false;
 
-    @Option(names = {"--reps"}, description = "Number of times to test an atom in one test case.", defaultValue = "1")
+    @Option(names = {"--reps"}, description = "Number of atom trials; control-flow trials use separate testcases.", defaultValue = "1")
     int reps = 1;
 
     @Option(names = {"--bit-dist"}, description = "Use bit length distribution for immediates", defaultValue = "false")
     boolean bitDist = false;
 
-    @Option(names = {"--random-prefix"}, description = "Add random instructions before the target atom", defaultValue = "false")
+    @Option(names = {"--random-prefix"}, description = "Add random non-control instructions before the target atom", defaultValue = "false")
     boolean randomPrefix = false;
 
-    @Option(names = {"--random-suffix"}, description = "Add state-isolated non-memory, non-control random instructions after the target atom", defaultValue = "false")
+    @Option(names = {"--random-suffix"}, description = "Add a state-isolated random suffix with private memory and forward-only control flow", defaultValue = "false")
     boolean randomSuffix = false;
 
     @Option(names = {"--reset-sequence"}, description = "Insert reset sequence between repetitions", defaultValue = "false")
