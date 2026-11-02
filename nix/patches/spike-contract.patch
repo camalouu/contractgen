@@ -94,7 +94,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..56597781198c7370d13293849844937148a92506
 --- /dev/null
 +++ b/spike_main/contract-spike-diff.cc
-@@ -0,0 +1,1252 @@
+@@ -0,0 +1,1263 @@
 +// See LICENSE for license details.
 +
 +#include "config.h"
@@ -402,6 +402,8 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +struct test_case {
 +  int index = 0;
 +  int max_instruction_count = 0;
++  int setup_instructions = 0;
++  bool include_setup = true;
 +  std::map<int, std::optional<int64_t>> registers1;
 +  std::map<int, std::optional<int64_t>> registers2;
 +  std::vector<program_insn> program1;
@@ -494,6 +496,15 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +    tc.registers2 = parse_registers(required_field(obj, "registers2"));
 +    tc.program1 = parse_program(required_field(obj, "program1"));
 +    tc.program2 = parse_program(required_field(obj, "program2"));
++    if (const auto* metadata = find_field(obj, "setupEvidence"); metadata && !metadata->is_null()) {
++      const auto& boundary = metadata->object();
++      tc.setup_instructions = checked_int(required_field(boundary, "setupInstructions").integer());
++      tc.include_setup = std::get<bool>(required_field(boundary, "includeSetup").value);
++      if (tc.setup_instructions < 0 || tc.setup_instructions > 2016 ||
++          size_t(tc.setup_instructions) > tc.program1.size() || size_t(tc.setup_instructions) > tc.program2.size() ||
++          tc.setup_instructions > tc.max_instruction_count)
++        throw std::runtime_error("Invalid setup evidence boundary");
++    }
 +    out.push_back(std::move(tc));
 +  }
 +  return out;
@@ -950,11 +961,11 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +  return out;
 +}
 +
-+extracted_evidence extract_evidence(const std::vector<sample>& left, const std::vector<sample>& right)
++extracted_evidence extract_evidence(const std::vector<sample>& left, const std::vector<sample>& right, size_t evidence_start = INIT_COUNT)
 +{
 +  const size_t count = std::min(left.size(), right.size());
 +  extracted_evidence evidence;
-+  for (size_t idx = INIT_COUNT; idx < count; idx++) {
++  for (size_t idx = evidence_start; idx < count; idx++) {
 +    std::set<atom> atoms;
 +    const auto i1 = decode(left[idx].instr);
 +    const auto i2 = decode(right[idx].instr);
@@ -1079,7 +1090,7 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +    const auto right = runner.run_side(right_words, retire_count);
 +    if (runner.architectural)
 +      result.requires_misaligned_data_access |= runner.architectural->requires_misaligned_data_access;
-+    auto evidence = extract_evidence(left, right);
++    auto evidence = extract_evidence(left, right, tc.include_setup ? INIT_COUNT : INIT_COUNT + 1 + tc.setup_instructions);
 +    result.atoms = std::move(evidence.atoms);
 +    result.instruction_pairs = std::move(evidence.instruction_pairs);
 +  } catch (const std::exception& e) {
@@ -1136,7 +1147,7 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +void write_result(std::ostream& out, const case_result& result,
 +                  execution_model model = execution_model::rv32_v1)
 +{
-+  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,";
++  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,\"setup_evidence_version\":1,";
 +  if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
 +  out << "\"ordinal\":" << result.ordinal
 +      << ",\"case_index\":" << result.index << ",\"atoms\":";
@@ -1156,7 +1167,7 @@ index 0000000000000000000000000000000000000000..56597781198c7370d132938498449371
 +  size_t failed = 0;
 +  for (const auto& result : results)
 +    if (result.error) failed++;
-+  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,";
++  out << "{\"atom_schema\":\"producer-attributed-dependencies-v1\",\"structural_predicates_version\":1,\"setup_evidence_version\":1,";
 +  if (model == execution_model::rv32_v1) out << "\"execution_model\":\"rv32-v1\",";
 +  out << "\"cases\":[";
 +  for (size_t i = 0; i < results.size(); i++) {
@@ -1352,7 +1363,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..7b29cc0b93c8e829e0f2b2438bc1640d2a2096ce
 --- /dev/null
 +++ b/spike_main/contract-spike-execution-model-test.cc
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,191 @@
 +// Compile against the adapted Spike checkout; assertions inspect architectural samples.
 +#define main contract_spike_cli_main
 +#include "contract-spike-diff.cc"
@@ -1528,6 +1539,20 @@ index 0000000000000000000000000000000000000000..7b29cc0b93c8e829e0f2b2438bc1640d
 +  boundary.imm = 0; signed_min.imm = 1;
 +  compare_predicate(boundary, signed_min, "IMM_IS_NEGATIVE", false);
 +  assert(batch.str().find("\"structural_predicates_version\":1") != std::string::npos);
++  // A body observation repeated during setup must retain its body retirement.
++  auto setup_left = run({encode_addi(1,0,1), encode_addi(1,0,1), encode_addi(2,1,0)});
++  auto setup_right = run({encode_addi(1,0,2), encode_addi(1,0,2), encode_addi(2,1,0)});
++  auto including = extract_evidence(setup_left, setup_right);
++  auto excluding = extract_evidence(setup_left, setup_right, 33);
++  assert(including.atoms.at(atom{"ADDI","IMM"}) == 33);
++  assert(excluding.atoms.at(atom{"ADDI","IMM"}) == 34);
++  assert(excluding.atoms.at(atom{"ADDI","REG_RS1"}) == 35);
++  // Dependency history before the boundary remains available.
++  auto dep_left = run({encode(program_insn{"ADD",1,0,0,{}}),encode_addi(2,1,0)});
++  auto dep_right = run({encode(program_insn{"ADD",0,0,0,{}}),encode_addi(2,1,0)});
++  auto crossed = extract_evidence(dep_left,dep_right,33);
++  assert(crossed.atoms.at(atom{"ADD","RAW_RS1_1"}) == 34);
++  assert(batch.str().find("\"setup_evidence_version\":1") != std::string::npos);
 +  std::cout << "Shared RV32 execution model architectural checks passed\n";
 +}
 diff --git a/tests/contract-spike-value-atoms.json b/tests/contract-spike-value-atoms.json

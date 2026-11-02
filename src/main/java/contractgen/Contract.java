@@ -260,6 +260,10 @@ public abstract class Contract {
         sb.append("Contract: ").append("\n");
         sb.append("\tSize: ").append(getContractSize()).append("\n");
         sb.append("\tFalse Positives: ").append(getFalsePositiveCount()).append("\n");
+        if (updater instanceof contractgen.updater.ILPUpdater ilp && ilp.objective() != null) {
+            sb.append("\tILP Objective: ").append(ilp.objective()).append("\n");
+            sb.append("\tUnexplained Positive Cases: ").append(ilp.unexplainedPositiveIds().size()).append("\n");
+        }
         return sb.toString();
     }
 

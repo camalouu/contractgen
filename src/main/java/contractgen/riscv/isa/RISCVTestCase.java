@@ -8,6 +8,19 @@ import contractgen.TestCase;
  * A RISC-V test case.
  */
 public class RISCVTestCase extends TestCase {
+    private contractgen.riscv.isa.tests.GenerationTarget generationTarget;
+    public contractgen.riscv.isa.tests.GenerationTarget getGenerationTarget() { return generationTarget; }
+    public void setGenerationTarget(contractgen.riscv.isa.tests.GenerationTarget target) { generationTarget=target; }
+    private contractgen.riscv.isa.tests.SetupEvidence setupEvidence;
+    public contractgen.riscv.isa.tests.SetupEvidence getSetupEvidence() { return setupEvidence; }
+    public void setSetupEvidence(contractgen.riscv.isa.tests.SetupEvidence metadata) {
+        if (metadata != null && (metadata.setupInstructions() > ((RISCVProgram)getProgram1()).getProgram().size()
+                || metadata.setupInstructions() > ((RISCVProgram)getProgram2()).getProgram().size()
+                || metadata.setupInstructions() > getMaxInstructionCount()))
+            throw new IllegalArgumentException("Setup boundary exceeds program or retirement bound");
+        setupEvidence=metadata;
+    }
+
 
     /**
      * @param program1              The program to be executed on core 1.

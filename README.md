@@ -58,6 +58,55 @@ set `CONTRACTGEN_WORK_ROOT` to use another writable location. Explicit CLI
 library paths such as `--spike-lib` and `--ibex-test-lib` take precedence over
 the corresponding `CONTRACT_*_LIB` environment variables.
 
+### Testcase generation
+
+`synth_new --strategy current` is the default generator, with its existing seeds,
+thread partitioning, `--sp`, prefixes, suffixes, repetitions and reset sequence.
+The following strategies port generation recipes from rewrite commit
+`a4bfd9d391088f0265aea40fb57a5023784a4e83`:
+
+| Strategy | Generation behavior | Default setup evidence |
+| --- | --- | --- |
+| `different_programs` | Sweep instructions and supported leakage modifiers; shared registers and random suffix | included |
+| `same_programs` | Same generated body, independently drawn initial registers | skipped |
+| `coverage_guided` | Modified targets weighted by `1/(1+observed+attempts/10)` using Spike feedback | included |
+| `random` | Random body with register differences and instruction mutations | skipped |
+| `replay` | Execute `--testcases PATH` (canonical JSON or rewrite JSON lines) | recorded policy; rewrite files include setup |
+
+Generated strategies require `-n COUNT -s SEED`. Replay requires neither and
+consumes the complete input corpus. Imported generators use
+`--register-values full|legacy` (default `full`). Both distributions initialize
+x1–x31 with 62 LUI/ADDI instructions and a NOP spacer after the unchanged
+`rv32-v1` initializer. `--skip-init` / `--no-skip-init` controls whether that
+setup contributes contract evidence. Setup always remains dependency history;
+the attacker observes the entire execution. Old canonical files retain their
+historical interpretation. Setup overrides on canonical replay require a
+recorded boundary.
+
+Random generation accepts `--program-length`, `--register-differences`, and
+`--instruction-modifications`, each as a fixed integer or
+`mean=...,sd=...,min=...,max=...`. Defaults are respectively
+`20/8/1/50`, `1/1/0/31`, and `1/1/0/50`. `--generation-batch-size`
+defaults to 256 for coverage/random and 64 for replay. The sweep generators
+retain their natural batches. Coverage generates two batches before applying
+feedback from the first, caches Spike evidence, then sends the complete corpus
+to the existing RTL scheduler. Each atom is counted once per testcase;
+dependency recipes keep their ADD producer and consumer generation context.
+
+These imported strategies keep the rewrite's modifiers and random control flow;
+they do not use the current generator's controlled suffix/helper rules. Memory
+alignment follows core capabilities. All cases execute under our memory/layout
+model, so their attacker labels need not match the rewrite's environment. The
+complete selected template still controls Spike extraction; functions without
+targeting recipes are listed in the generation metadata. Generation targets
+are never synthesis evidence.
+
+Canonical `testcases.json` persists setup boundaries and generation intent for
+replay through `synth_new --strategy replay` or `replay_synthesize_spike`.
+A `<testcases>.generation.json` sidecar records resolved parameters, source
+revision, setup policy, seed and replay-input SHA-256. Current-only generation
+options are rejected when explicitly combined with imported strategies.
+
 ### Adaptive query scheduling
 
 Both `synth_new` and `replay_synthesize_spike` accept
@@ -100,6 +149,28 @@ other policies reject that combination rather than silently changing its semanti
 The [local scheduling experiment](experiments/local-scheduling-20261013/README.md)
 compares these policies with one and four RTL workers on five cores and records
 sensitivity, missed leaks, precision and collection time on independent holdouts.
+
+### Contract synthesis objective
+
+The ILP uses the rewrite's explicit distinguishing terms: differing-value atoms
+and XOR terms for instruction-specific observation presence. Producer-attributed
+dependencies remain history predicates and do not expose current-instruction
+presence. Spike extraction, generators and testcase serialization are unchanged.
+
+Synthesis first minimizes false-positive **testcase occurrences**, then minimizes
+contract size at that optimum. Negative cases share a constraint only when all
+explanation terms match; their occurrence counts become its weight. This replaces
+the historical equally weighted representative per negative observation set, so
+resynthesizing saved evidence can change a contract without changing RTL labels.
+
+Positive cases with no usable explanation terms are reported and omitted from the
+ILP constraints, as in the rewrite. They remain positive in the saved evidence;
+they are never relabeled negative. Their IDs are saved in
+`contract.json` under `updater.unexplainedPositiveIds`, and the summary reports
+their count. A nonzero count means the selected template cannot explain all
+observed leaks. Conflicting nonempty positive constraints still fail synthesis.
+The objective version is recorded under `updater.objective`; historical files
+without these diagnostic fields remain readable.
 
 ### Development
 

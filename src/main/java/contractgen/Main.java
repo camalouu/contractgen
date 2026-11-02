@@ -312,6 +312,16 @@ class Synthesize implements Callable<Integer> {
 
 @Command(name = "synth_new", mixinStandardHelpOptions = true, description = "Synthesize using Spike for contract atoms and an attacker-only RTL harness for attacker labels.")
 class SynthesizeNew implements Callable<Integer> {
+    @CommandLine.Spec CommandLine.Model.CommandSpec spec;
+    enum Strategy { current, different_programs, same_programs, coverage_guided, random, replay }
+    @Option(names="--strategy", defaultValue="current", description="Testcase strategy: ${COMPLETION-CANDIDATES}.") Strategy strategy=Strategy.current;
+    @Option(names="--register-values", defaultValue="full", description="Imported register distribution: full or legacy.") String registerValues="full";
+    @Option(names="--program-length", description="Random body length: integer or mean=...,sd=...,min=...,max=....") String programLength;
+    @Option(names="--register-differences", description="Random changed-register count; integer or distribution.") String registerDifferences;
+    @Option(names="--instruction-modifications", description="Random instruction mutation count; integer or distribution.") String instructionModifications;
+    @Option(names="--skip-init", negatable=true, description="Exclude setup from Spike evidence; attacker still observes setup.") Boolean skipInit;
+    @Option(names="--generation-batch-size", description="Coverage/random/replay batch size (defaults: 256/256/64).") Integer generationBatchSize;
+    @Option(names="--testcases", description="Saved canonical JSON or rewrite JSON-lines corpus for replay.") File replayInput;
     @CommandLine.Mixin
     AdaptiveSchedulingOptions scheduling = new AdaptiveSchedulingOptions();
     @Option(names = {"-p", "--processor"}, required = true, description = "Attacker-only RTL harness: ${COMPLETION-CANDIDATES}")
@@ -323,13 +333,13 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names = {"-c", "--contract"}, required = true, description = "The contract template to use. Options: ${COMPLETION-CANDIDATES}", split = ",")
     Set<RISCV_OBSERVATION_TYPE.RISCV_OBSERVATION_TYPE_GROUP> template;
 
-    @Option(names = {"-n"}, required = true, description = "Number of test cases")
+    @Option(names = {"-n"}, description = "Number of test cases")
     int number;
 
     @Option(names = {"-t"}, required = true, description = "Number of simulation threads")
     int threads;
 
-    @Option(names = {"-s"}, required = true, description = "Seed")
+    @Option(names = {"-s"}, description = "Seed")
     long seed;
 
     @Option(names = {"-o", "--output"}, description = "Contract output path (JSON). Required unless --output-dir is used.")
@@ -442,13 +452,22 @@ class SynthesizeNew implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        validateGenerationOptions();
         ReplaySynthesizeSpike.validateExecutionModel(processor, executionModel);
         scheduling.validate(!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets));
         OutputPaths outputs = resolveOutputs(outputDir, out, testcasesOut, txt);
+        if(replayInput!=null) ExecutionMetadata.requireDistinctPaths(replayInput.toPath(), ExecutionMetadata.path(replayInput.toPath()),
+                outputs.contract(), ExecutionMetadata.path(outputs.contract()), outputs.testcases(), ExecutionMetadata.path(outputs.testcases()),
+                outputs.summary(), ReplaySynthesizeSpike.signatureReportPath(outputs.contract(), outputs.summary()),
+                scheduling.queryLog==null?null:scheduling.queryLog.toPath(),
+                outputs.testcases().resolveSibling(outputs.testcases().getFileName()+".generation.json"));
         out = outputs.contract().toFile();
         testcasesOut = outputs.testcases().toFile();
         txt = outputs.summary() == null ? null : outputs.summary().toFile();
         scheduling.validatePaths(out.toPath(), resolveTestcasesOutput(out, testcasesOut), txt);
+        ExecutionMetadata.requireDistinctPaths(outputs.testcases().resolveSibling(outputs.testcases().getFileName()+".generation.json"),
+                outputs.contract(),outputs.testcases(),outputs.summary(),ExecutionMetadata.path(outputs.contract()),ExecutionMetadata.path(outputs.testcases()),
+                ReplaySynthesizeSpike.signatureReportPath(outputs.contract(),outputs.summary()),scheduling.queryLog==null?null:scheduling.queryLog.toPath());
         if (outputDir != null) {
             try {
                 Files.createDirectories(outputDir.toPath());
@@ -466,7 +485,7 @@ class SynthesizeNew implements Callable<Integer> {
         // Preserve the established per-processor generation stream and seed behavior.
         // Replay eligibility independently allows misalignment on capable cores.
         boolean allowMisalignedMemory = processor.isIbex();
-        TestCases generated = new RISCVIterativeTests(
+        TestCases generated = strategy==Strategy.current ? new RISCVIterativeTests(
                 isa,
                 RISCV_OBSERVATION_TYPE.getGroups(template),
                 seed,
@@ -479,18 +498,82 @@ class SynthesizeNew implements Callable<Integer> {
                 randomPrefix,
                 randomSuffix,
                 resetSequence
-        );
-        List<TestCase> tests = RISCVTestCaseIO.collect(generated::getIterator, threads);
+        ) : null;
+        java.util.Map<Integer, SpikeAtomClient.SpikeCaseAtoms> cachedEvidence = null;
+        List<TestCase> tests;
+        contractgen.riscv.isa.tests.ImportedTestCaseSource imported = null;
+        int batchSize = generationBatchSize == null ? (strategy==Strategy.replay ? 64 : 256) : generationBatchSize;
+        boolean skip = skipInit != null ? skipInit : strategy==Strategy.same_programs || strategy==Strategy.random;
+        if (strategy==Strategy.replay) {
+            try {
+                ExecutionMetadata.validate(replayInput.toPath(),executionModel,spikeIsa);
+                tests=new ArrayList<>();
+                var replay=new contractgen.riscv.isa.tests.ReplayTestCaseSource(RISCVTestCaseIO.read(replayInput.toPath()),batchSize);
+                var ids=new contractgen.riscv.isa.tests.TestCaseSource.Context();
+                for(var batch=replay.nextBatch(ids);!batch.isEmpty();batch=replay.nextBatch(ids)) tests.addAll(batch);
+            }
+            catch(IOException e) { throw new RuntimeException("Cannot read replay corpus",e); }
+            if(skipInit!=null) for(TestCase t:tests) {
+                var rt=(contractgen.riscv.isa.RISCVTestCase)t;
+                var boundary=rt.getSetupEvidence();
+                if(boundary==null) throw new IllegalArgumentException("Setup override requires recorded setup metadata");
+                rt.setSetupEvidence(new contractgen.riscv.isa.tests.SetupEvidence(boundary.setupInstructions(),!skip));
+            }
+        } else {
+            contractgen.riscv.isa.tests.TestCaseSource source;
+            if(strategy==Strategy.current) source=new contractgen.riscv.isa.tests.CurrentTestCaseSource(generated,threads);
+            else {
+                imported=new contractgen.riscv.isa.tests.ImportedTestCaseSource(strategy.name(),isa,
+                    RISCV_OBSERVATION_TYPE.getGroups(template),seed,number,!processor.supportsMisalignedDataAccess(),
+                    registerValues,batchSize,contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(
+                        programLength,registerDifferences,instructionModifications),skip);
+                source=imported;
+            }
+            tests=new ArrayList<>();
+            var context=new contractgen.riscv.isa.tests.TestCaseSource.Context();
+            java.util.ArrayDeque<List<TestCase>> pending=new java.util.ArrayDeque<>();
+            if(strategy==Strategy.coverage_guided) cachedEvidence=new java.util.LinkedHashMap<>();
+            while(strategy==Strategy.current || tests.size()<number) {
+                List<TestCase> batch=source.nextBatch(context);
+                if(batch.isEmpty()) {
+                    if(strategy!=Strategy.current && tests.size()<number) throw new IllegalStateException("Generation exhausted after "+tests.size()+" of "+number+" cases");
+                    break;
+                }
+                tests.addAll(batch);
+                if(cachedEvidence!=null) {
+                    pending.add(batch);
+                    if(pending.size()==2) collectGenerationEvidence(source,pending.remove(),cachedEvidence);
+                }
+            }
+            while(!pending.isEmpty()) collectGenerationEvidence(source,pending.remove(),cachedEvidence);
+        }
         Path testcasePath = resolveTestcasesOutput(out, testcasesOut);
         try {
             RISCVTestCaseIO.write(testcasePath, tests);
             ExecutionMetadata.write(testcasePath, executionModel, spikeIsa);
+            var metadata=new java.util.LinkedHashMap<String,Object>();
+            metadata.put("strategy",strategy.name()); metadata.put("seed",strategy==Strategy.replay?null:seed);
+            metadata.put("count",tests.size()); metadata.put("sourceRevision",strategy==Strategy.current?"native-current":contractgen.riscv.isa.tests.ImportedTestCaseSource.REVISION);
+            metadata.put("isa",isa); metadata.put("template",template); metadata.put("processor",processor);
+            metadata.put("threads",threads); metadata.put("alignMemory",strategy==Strategy.current?!processor.isIbex():!processor.supportsMisalignedDataAccess());
+            metadata.put("setupPolicy",strategy==Strategy.current?"historical":strategy==Strategy.replay&&skipInit==null?"recorded":skip?"exclude":"include");
+            if(strategy==Strategy.current) {
+                metadata.put("sp",isSP);metadata.put("reps",reps);metadata.put("bitDist",bitDist);
+                metadata.put("randomPrefix",randomPrefix);metadata.put("randomSuffix",randomSuffix);metadata.put("resetSequence",resetSequence);
+            }
+            metadata.put("registerValues",registerValues); metadata.put("skipInit",strategy==Strategy.replay?skipInit:Boolean.valueOf(skip));
+            metadata.put("generationBatchSize",batchSize);
+            metadata.put("distributions",contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(programLength,registerDifferences,instructionModifications));
+            metadata.put("untargetedFunctions",imported==null?List.of():imported.untargeted);
+            if(replayInput!=null) metadata.put("replayInputSha256",contractgen.riscv.isa.tests.ReplayTestCaseSource.digest(replayInput.toPath()));
+            Files.writeString(testcasePath.resolveSibling(testcasePath.getFileName()+".generation.json"),new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(metadata));
         } catch (IOException e) {
             throw new RuntimeException("Failed to write generated testcases to " + testcasePath, e);
         }
         System.out.println("Exported " + tests.size() + " generated testcases to " + testcasePath);
 
         ReplaySynthesizeSpike runner = new ReplaySynthesizeSpike();
+        runner.cachedSpikeEvidence=cachedEvidence;
         runner.isa = isa;
         runner.template = template;
         runner.threads = threads;
@@ -527,15 +610,54 @@ class SynthesizeNew implements Callable<Integer> {
         runner.disableAdaptiveSkipping = disableAdaptiveSkipping;
         runner.scheduling = scheduling;
 
-        String source = "generated seed=" + seed
-                + ", count=" + number
-                + ", reps=" + reps
-                + ", bitDist=" + bitDist
-                + ", randomPrefix=" + randomPrefix
-                + ", randomSuffix=" + randomSuffix
-                + ", resetSequence=" + resetSequence
-                + ", testcases=" + testcasePath;
+        String source = "strategy=" + strategy + ", count=" + tests.size() + ", testcases=" + testcasePath;
+        if (strategy == Strategy.current) {
+            source += ", seed=" + seed + ", threads=" + threads + ", sp=" + isSP
+                    + ", reps=" + reps + ", bitDist=" + bitDist + ", randomPrefix=" + randomPrefix
+                    + ", randomSuffix=" + randomSuffix + ", resetSequence=" + resetSequence;
+        } else if (strategy == Strategy.replay) {
+            source += ", input=" + replayInput + ", setupPolicy=" + (skipInit == null ? "recorded" : skip ? "exclude" : "include");
+        } else {
+            source += ", seed=" + seed + ", registerValues=" + registerValues + ", skipInit=" + skip;
+            if (strategy == Strategy.coverage_guided || strategy == Strategy.random) source += ", batchSize=" + batchSize;
+            if (strategy == Strategy.random) source += ", distributions="
+                    + contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(
+                            programLength, registerDifferences, instructionModifications);
+        }
         return runner.runTests(tests, source);
+    }
+
+    void validateGenerationOptions() {
+        var parsed=spec==null?null:spec.commandLine().getParseResult();
+        if(strategy!=Strategy.current && parsed!=null) for(String name:List.of("--sp","--random-prefix","--random-suffix","--reps","--reset-sequence","--bit-dist"))
+            if(parsed.hasMatchedOption(name)) throw new IllegalArgumentException(name+" requires --strategy current");
+        if(strategy!=Strategy.random && (programLength!=null||registerDifferences!=null||instructionModifications!=null))
+            throw new IllegalArgumentException("Random distributions require --strategy random");
+        if(strategy==Strategy.current && (skipInit!=null || generationBatchSize!=null || parsed!=null&&parsed.hasMatchedOption("--register-values")))
+            throw new IllegalArgumentException("Imported generation options are incompatible with current");
+        if(strategy==Strategy.replay) {
+            if(replayInput==null) throw new IllegalArgumentException("--strategy replay requires --testcases");
+        } else {
+            if(replayInput!=null) throw new IllegalArgumentException("--testcases requires --strategy replay");
+            if(parsed!=null && (!parsed.hasMatchedOption("-n")||!parsed.hasMatchedOption("-s"))) throw new IllegalArgumentException("Generated strategies require -n and -s");
+            if(number<1) throw new IllegalArgumentException("Count must be positive");
+        }
+        if(threads<1 || generationBatchSize!=null&&generationBatchSize<1) throw new IllegalArgumentException("Thread and batch counts must be positive");
+        if(!Set.of("full","legacy").contains(registerValues)) throw new IllegalArgumentException("--register-values must be full or legacy");
+    }
+    private void collectGenerationEvidence(contractgen.riscv.isa.tests.TestCaseSource source,List<TestCase> batch,
+            Map<Integer,SpikeAtomClient.SpikeCaseAtoms> cache) {
+        Path library=spikeLib!=null?spikeLib.toPath():Path.of(System.getenv().getOrDefault("CONTRACT_SPIKE_LIB","riscv-isa-sim/build/libcontract_spike_atom.so"));
+        var evidence=new SpikeAtomParallelRunner(library,spikeIsa,RISCV_OBSERVATION_TYPE.getGroups(template),threads,null,executionModel).run(batch);
+        List<SpikeAtomClient.SpikeCaseAtoms> feedback=new ArrayList<>();
+        for(int i=0;i<batch.size();i++) {
+            var c=evidence.get(i);
+            if(c==null) throw new IllegalStateException("Missing generation evidence");
+            int ordinal=cache.size();
+            var relocated=new SpikeAtomClient.SpikeCaseAtoms(ordinal,c.caseIndex(),c.atoms(),c.firstRetire(),c.instructionPairs(),c.pairFirstRetire(),c.error(),c.requiresMisalignedDataAccess());
+            cache.put(ordinal,relocated); feedback.add(relocated);
+        }
+        source.onEvidence(feedback);
     }
 
     static Path resolveTestcasesOutput(File contractOutput, File explicitOutput) {
@@ -1302,6 +1424,11 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
     @Option(names = {"--disable-adaptive-skipping"}, description = "Execute the attacker RTL for every testcase; disables exact-signature, threshold, and signature-relation skipping.")
     boolean disableAdaptiveSkipping = false;
 
+    @Option(names="--skip-init", negatable=true, description="Override evidence inclusion at a recorded setup boundary.")
+    Boolean skipInit;
+    @Option(names="--testcases-output", description="Save replay cases, including any evidence-policy override.")
+    File testcasesOut;
+
     private String sourceDescription;
 
     static Path signatureReportPath(Path output, Path summary) {
@@ -1320,8 +1447,32 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return runTests(tests, testcases.getPath());
+        if(skipInit!=null) {
+            for(TestCase t:tests) {
+                var rt=(contractgen.riscv.isa.RISCVTestCase)t;
+                var metadata=rt.getSetupEvidence();
+                if(metadata==null) throw new IllegalArgumentException("Setup override requires recorded setup metadata");
+                rt.setSetupEvidence(new contractgen.riscv.isa.tests.SetupEvidence(metadata.setupInstructions(),!skipInit));
+            }
+        }
+        if(skipInit!=null || testcasesOut!=null) {
+            Path saved=SynthesizeNew.resolveTestcasesOutput(out,testcasesOut);
+            ExecutionMetadata.requireDistinctPaths(saved,ExecutionMetadata.path(saved),saved.resolveSibling(saved.getFileName()+".generation.json"),
+                    testcases.toPath(),ExecutionMetadata.path(testcases.toPath()),out.toPath(),ExecutionMetadata.path(out.toPath()),
+                    scheduling.queryLog==null?null:scheduling.queryLog.toPath(),
+                    txt==null?null:txt.toPath(),signatureReportPath(out.toPath(),txt==null?null:txt.toPath()));
+            try {
+                RISCVTestCaseIO.write(saved,tests); ExecutionMetadata.write(saved,executionModel,spikeIsa);
+                var metadata=new java.util.LinkedHashMap<String,Object>();
+                metadata.put("strategy","replay");metadata.put("setupPolicy",skipInit==null?"recorded":skipInit?"exclude":"include");
+                metadata.put("replayInputSha256",contractgen.riscv.isa.tests.ReplayTestCaseSource.digest(testcases.toPath()));
+                Files.writeString(saved.resolveSibling(saved.getFileName()+".generation.json"),new com.google.gson.Gson().toJson(metadata));
+            } catch(IOException e) { throw new RuntimeException("Cannot save replay cases",e); }
+        }
+        return runTests(tests, "strategy=replay, skipInit="+skipInit+", testcases="+testcases.getPath());
     }
+
+    Map<Integer, SpikeAtomClient.SpikeCaseAtoms> cachedSpikeEvidence;
 
     Integer runTests(List<TestCase> tests, String sourceDescription) {
         scheduling.validate(!disableAdaptiveSkipping && (skipPositiveSupersets || skipNegativeSubsets));
@@ -1353,7 +1504,7 @@ class ReplaySynthesizeSpike implements Callable<Integer> {
 
         long start = System.currentTimeMillis();
         Path spikeLibrary = resolveSpikeLibrary();
-        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal = runSpikeInChunks(spikeLibrary, tests, allowed);
+        Map<Integer, SpikeAtomClient.SpikeCaseAtoms> spikeByOrdinal = cachedSpikeEvidence!=null ? cachedSpikeEvidence : runSpikeInChunks(spikeLibrary, tests, allowed);
         long spikeTime = System.currentTimeMillis() - start;
 
         List<String> failures = new ArrayList<>();

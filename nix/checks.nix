@@ -77,6 +77,11 @@ in {
     run_workflow CV32E40S_TEST BASE,M on
     touch $out
   '';
+  generator-workflows = pkgs.runCommand "contractgen-generator-workflows" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    python3 ${./tests/setup-boundaries.py} ${tools.spike}/lib/libcontract_spike_atom.so
+    python3 ${./tests/generator-workflows.py} ${application}/bin/contractgen "$TMPDIR/generators" ${./tests/compare-replay.py}
+    touch $out
+  '';
   shared-reference-conformance = pkgs.runCommand "contractgen-shared-reference-conformance" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: drv:
       "${tools.spike}/libexec/contract-spike-rtl-agreement ${drv}/lib/libcontract_${drv.atom}_attacker.so "

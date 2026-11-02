@@ -22,7 +22,7 @@ class ILPUpdaterRepresentativeTest {
             new RISCVObservation(RISCV_TYPE.SUB, RISCV_OBSERVATION_TYPE.REG_RS1);
 
     @Test
-    void repeatedNegativeObservationsRetainOneObjectiveTerm() {
+    void repeatedNegativeEvidenceIsWeightedByOccurrence() {
         List<TestResult> results = new ArrayList<>();
         results.add(new RISCVTestResult(Set.of(ADD_RS1), Set.of(), true, 0));
         for (int i = 1; i <= 1000; i++) {
@@ -34,12 +34,12 @@ class ILPUpdaterRepresentativeTest {
 
         assertTrue(result.isOptimal());
         assertEquals(Set.of(ADD_RS1), result.contract());
-        assertEquals(1, result.falsePositives());
+        assertEquals(1000, result.falsePositives());
         assertEquals(1, result.size());
     }
 
     @Test
-    void lastEqualNegativeDeterminesTheExistingObjective() {
+    void differentInstructionPairsRemainDistinctRegardlessOfOrder() {
         var coveredPair = new Pair<>(RISCV_TYPE.ADD, RISCV_TYPE.SUB);
         var uncoveredPair = new Pair<>(RISCV_TYPE.SUB, RISCV_TYPE.SUB);
         var positive = new RISCVTestResult(Set.of(ADD_RS1), Set.of(), true, 0);
@@ -57,7 +57,7 @@ class ILPUpdaterRepresentativeTest {
         assertTrue(coveredLast.isOptimal());
         assertEquals(Set.of(ADD_RS1), uncoveredLast.contract());
         assertEquals(Set.of(ADD_RS1), coveredLast.contract());
-        assertEquals(0, uncoveredLast.falsePositives());
+        assertEquals(1, uncoveredLast.falsePositives());
         assertEquals(1, coveredLast.falsePositives());
     }
 }

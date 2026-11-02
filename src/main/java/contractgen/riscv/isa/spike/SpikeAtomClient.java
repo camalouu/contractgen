@@ -67,6 +67,11 @@ public final class SpikeAtomClient {
                 var response = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
                 if (response.has("error"))
                     throw new IllegalStateException("Spike atom library failed: " + response.get("error").getAsString());
+                if (com.google.gson.JsonParser.parseString(testcasesJson).getAsJsonArray().asList().stream()
+                        .map(com.google.gson.JsonElement::getAsJsonObject)
+                        .anyMatch(c -> c.has("setupEvidence") && !c.get("setupEvidence").isJsonNull())
+                        && (!response.has("setup_evidence_version") || response.get("setup_evidence_version").getAsInt()!=1))
+                    throw new IllegalStateException("Spike library lacks setup evidence boundaries; rebuild with nix build .#spike.");
                 if (!response.has("atom_schema") || !RISCVObservation.DEPENDENCY_SCHEMA.equals(response.get("atom_schema").getAsString()))
                     throw new IllegalStateException("Spike library lacks producer-attributed dependency atoms; rebuild with nix build .#spike and re-enter nix develop or update CONTRACT_SPIKE_LIB.");
                 if (!response.has("execution_model")

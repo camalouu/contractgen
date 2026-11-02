@@ -236,8 +236,8 @@ public class RISCVContract extends Contract {
 
         @Override
         public Updater deserialize(JsonElement jsonElement, Type type, JsonDeserializationContext jsonDeserializationContext) throws JsonParseException {
-            // TODO Allow to specify the updater or read it from json.
-            return new ILPUpdater();
+            // Preserve synthesis diagnostics; historical empty updater objects remain valid.
+            return new Gson().fromJson(jsonElement, ILPUpdater.class);
         }
     }
 

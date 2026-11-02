@@ -2,7 +2,6 @@ package contractgen.riscv.isa.tests;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 import contractgen.Observation;
 import contractgen.TestCase;
 import contractgen.TestResult;
@@ -32,7 +31,9 @@ public final class RISCVTestCaseIO {
             int index,
             Set<RISCVObservation> observations,
             Set<Pair<RISCV_TYPE, RISCV_TYPE>> distinguishingInstructions,
-            boolean adversaryDistinguishable
+            boolean adversaryDistinguishable,
+            SetupEvidence setupEvidence,
+            GenerationTarget generationTarget
     ) {
     }
 
@@ -63,17 +64,28 @@ public final class RISCVTestCaseIO {
 
     public static List<TestCase> read(Path input) throws IOException {
         Gson gson = new GsonBuilder().create();
-        List<SerializedTestCase> data = gson.fromJson(
-                Files.readString(input),
-                new TypeToken<List<SerializedTestCase>>() {
-                }.getType()
-        );
-        if (data == null) {
-            return List.of();
+        try (var probe=Files.newBufferedReader(input)) {
+            int c; do {c=probe.read();} while(c!=-1&&Character.isWhitespace(c));
+            if(c!='[') return ReplayTestCaseSource.readLines(input);
         }
-        List<TestCase> tests = new ArrayList<>(data.size());
-        for (SerializedTestCase s : data) {
-            tests.add(deserialize(s));
+        List<TestCase> tests=new ArrayList<>();
+        try(var reader=gson.newJsonReader(Files.newBufferedReader(input))) {
+            reader.beginArray();
+            while(reader.hasNext()) {
+                com.google.gson.JsonObject raw=com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
+                if(raw.has("setupEvidence") && !raw.get("setupEvidence").isJsonNull()) {
+                    var boundary=raw.getAsJsonObject("setupEvidence");
+                    var count=boundary.get("setupInstructions"); var include=boundary.get("includeSetup");
+                    if(count==null || !count.isJsonPrimitive() || !count.getAsJsonPrimitive().isNumber()
+                            || count.getAsBigDecimal().stripTrailingZeros().scale()>0 || include==null || !include.isJsonPrimitive()
+                            || !include.getAsJsonPrimitive().isBoolean())
+                        throw new IllegalArgumentException("Malformed setup evidence metadata");
+                    count.getAsBigDecimal().intValueExact();
+                }
+                tests.add(deserialize(gson.fromJson(raw,SerializedTestCase.class)));
+            }
+            reader.endArray();
+            if(reader.peek()!=com.google.gson.stream.JsonToken.END_DOCUMENT) throw new IllegalArgumentException("Trailing testcase JSON");
         }
         return tests;
     }
@@ -196,7 +208,9 @@ public final class RISCVTestCaseIO {
                 tc.getIndex(),
                 observations,
                 distinguishingInstructions,
-                adversaryDistinguishable
+                adversaryDistinguishable,
+                ((RISCVTestCase)tc).getSetupEvidence(),
+                ((RISCVTestCase)tc).getGenerationTarget()
         );
     }
 
@@ -207,13 +221,16 @@ public final class RISCVTestCaseIO {
                 s.adversaryDistinguishable,
                 s.index
         );
-        return new RISCVTestCase(
+        RISCVTestCase testcase = new RISCVTestCase(
                 new RISCVProgram(s.registers1 == null ? new HashMap<>() : s.registers1, s.program1 == null ? List.of() : s.program1),
                 new RISCVProgram(s.registers2 == null ? new HashMap<>() : s.registers2, s.program2 == null ? List.of() : s.program2),
                 s.maxInstructionCount,
                 result,
                 s.index
         );
+        testcase.setSetupEvidence(s.setupEvidence);
+        testcase.setGenerationTarget(s.generationTarget);
+        return testcase;
     }
 
     private record CompactionKey(
