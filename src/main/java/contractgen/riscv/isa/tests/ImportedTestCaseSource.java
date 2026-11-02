@@ -11,6 +11,14 @@ import java.util.*;
 
 /** Rewrite generation recipes lowered into the native execution model. Intent is never synthesis evidence. */
 public final class ImportedTestCaseSource implements TestCaseSource {
+    // Imported values are materialized in setup instructions; native initializer slots are always zero.
+    // Share this immutable map instead of retaining 31 TreeMap entries for each side of every case.
+    private static final SortedMap<Integer,Integer> ZERO_REGISTERS;
+    static {
+        SortedMap<Integer,Integer> zeros=new TreeMap<>();
+        for(int r=1;r<32;r++) zeros.put(r,0);
+        ZERO_REGISTERS=Collections.unmodifiableSortedMap(zeros);
+    }
     public static final String REVISION="a4bfd9d391088f0265aea40fb57a5023784a4e83";
     private final contractgen.riscv.isa.tests.imported.generation.TestCaseSource source;
     private final GenerationContext context=new GenerationContext();
@@ -68,8 +76,7 @@ public final class ImportedTestCaseSource implements TestCaseSource {
         instructions.add(RISCVInstruction.NOP());
         p.instructions().stream().map(ImportedTestCaseSource::lower).forEach(instructions::add);
         if(instructions.size()>2048-32) throw new IllegalArgumentException("Generated program exceeds rv32-v1 instruction image");
-        Map<Integer,Integer> zeros=new TreeMap<>();for(int r=1;r<32;r++) zeros.put(r,0);
-        return new RISCVProgram(zeros,instructions);
+        return new RISCVProgram(ZERO_REGISTERS,instructions);
     }
     private static RISCVInstruction lower(Instruction i) {
         Long imm=i.imm();

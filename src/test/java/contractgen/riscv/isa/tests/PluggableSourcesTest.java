@@ -19,6 +19,19 @@ class PluggableSourcesTest {
   for(var b=source.nextBatch(c);!b.isEmpty();b=source.nextBatch(c)) {out.addAll(b);assertTrue(out.size()<10000);}
   return out;
  }
+ @Test void nativeZeroInitializerIsSharedImmutableAndSerializesIdentically() {
+  var tests=all(source("random",17,true));
+  var registers=((RISCVProgram)tests.get(0).getProgram1()).getRegisters();
+  for(var t:tests)for(var p:List.of(t.getProgram1(),t.getProgram2()))
+   assertSame(registers,((RISCVProgram)p).getRegisters());
+  assertThrows(UnsupportedOperationException.class,()->registers.put(1,1));
+  var t=(RISCVTestCase)tests.get(0);
+  var a=(RISCVProgram)t.getProgram1();var b=(RISCVProgram)t.getProgram2();
+  var copy=new RISCVTestCase(new RISCVProgram(new TreeMap<>(a.getRegisters()),a.getProgram()),
+      new RISCVProgram(new TreeMap<>(b.getRegisters()),b.getProgram()),t.getMaxInstructionCount(),t.getIndex());
+  copy.setSetupEvidence(t.getSetupEvidence());
+  assertEquals(RISCVTestCaseIO.toJSON(List.of(t)),RISCVTestCaseIO.toJSON(List.of(copy)));
+ }
  @Test void deterministicExactCountsAndBatchIndependentRandom() {
   for(String strategy:List.of("different_programs","same_programs","coverage_guided","random")) {
    var a=all(source(strategy,17,false));var b=all(source(strategy,17,false));
