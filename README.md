@@ -93,6 +93,12 @@ feedback from the first, caches Spike evidence, then sends the complete corpus
 to the existing RTL scheduler. Each atom is counted once per testcase;
 dependency recipes keep their ADD producer and consumer generation context.
 
+Random generation also accepts `--no-instruction-type-changes`: instruction mutations
+change operand fields only, keeping the mnemonic at each corresponding generated
+position fixed. The default still allows mnemonic mutations. This does not guarantee
+matching executed instruction types: different branches or jumps can change execution
+paths, and alignment helpers can differ.
+
 These imported strategies keep the rewrite's modifiers and random control flow;
 they do not use the current generator's controlled suffix/helper rules. Memory
 alignment follows core capabilities. All cases execute under our memory/layout

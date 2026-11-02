@@ -113,6 +113,15 @@ public final class RandomSource implements TestCaseSource {
         if(batchSize<1) throw new IllegalArgumentException("Invalid batch size");
         this.batchSize=batchSize;
     }
+    private boolean varyInstructionTypes = true;
+
+    /** Restrict mutations to operands when instruction types must remain fixed. */
+    public RandomSource(Collection<Subset> subsets, long seed, long total, boolean alignMemory,
+                        RegisterValues values, Distributions distributions, int batchSize,
+                        boolean varyInstructionTypes) {
+        this(subsets, seed, total, alignMemory, values, distributions, batchSize);
+        this.varyInstructionTypes = varyInstructionTypes;
+    }
     private final List<Mnemonic> mnemonics;
     private final boolean alignMemory;
     private final RegisterValues values;
@@ -207,7 +216,7 @@ public final class RandomSource implements TestCaseSource {
     /** The instruction with its mnemonic or one of its operand fields changed. */
     private Instruction modify(Instruction i) {
         List<Part> parts = new ArrayList<>();
-        if (mnemonics.size() > 1) parts.add(Part.MNEMONIC);
+        if (varyInstructionTypes && mnemonics.size() > 1) parts.add(Part.MNEMONIC);
         if (i.hasRD()) parts.add(Part.RD);
         if (i.hasRS1()) parts.add(Part.RS1);
         if (i.hasRS2()) parts.add(Part.RS2);

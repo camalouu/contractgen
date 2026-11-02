@@ -20,6 +20,13 @@ public final class ImportedTestCaseSource implements TestCaseSource {
     public ImportedTestCaseSource(String strategy, Set<RISCV_SUBSET> isa, Set<RISCV_OBSERVATION_TYPE> allowed,
             long seed, int count, boolean align, String values, int batchSize,
             RandomSource.Distributions distributions, boolean skipInit) {
+        this(strategy, isa, allowed, seed, count, align, values, batchSize, distributions, skipInit, true);
+    }
+    public ImportedTestCaseSource(String strategy, Set<RISCV_SUBSET> isa, Set<RISCV_OBSERVATION_TYPE> allowed,
+            long seed, int count, boolean align, String values, int batchSize,
+            RandomSource.Distributions distributions, boolean skipInit, boolean varyInstructionTypes) {
+        if (!varyInstructionTypes && !strategy.equals("random"))
+            throw new IllegalArgumentException("Fixed instruction types require strategy random");
         if(count<1 || batchSize<1) throw new IllegalArgumentException("Count and generation batch size must be positive");
         List<Subset> subsets=isa.stream().map(s->Subset.parse(s.name())).toList();
         if(subsets.isEmpty()) throw new IllegalArgumentException("Empty generation ISA");
@@ -34,7 +41,7 @@ public final class ImportedTestCaseSource implements TestCaseSource {
             case "different_programs" -> new DifferentProgramsSource(subsets,functions,seed,count,align,rv);
             case "same_programs" -> new SameProgramsSource(subsets,seed,count,align,rv);
             case "coverage_guided" -> new CoverageGuidedSource(targets,subsets,seed,count,batchSize,align,rv);
-            case "random" -> new RandomSource(subsets,seed,count,align,rv,distributions,batchSize);
+            case "random" -> new RandomSource(subsets,seed,count,align,rv,distributions,batchSize,varyInstructionTypes);
             default -> throw new IllegalArgumentException("Unknown imported strategy: "+strategy);
         };
         this.skipInit=skipInit;

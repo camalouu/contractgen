@@ -8,6 +8,10 @@ class GeneratorOptionsTest {
   var command=new SynthesizeNew();var args=new ArrayList<>(List.of("-p","IBEX_TEST","-i","BASE","-c","BASE","-t","1","-o","/tmp/unused.json"));
   args.addAll(List.of(options));new CommandLine(command).parseArgs(args.toArray(String[]::new));return command;
  }
+ @Test void fixedInstructionTypesAreRandomOnly() {
+  assertTrue(parse("--strategy","random","-n","5","-s","0","--no-instruction-type-changes").noInstructionTypeChanges);
+  assertThrows(IllegalArgumentException.class,()->parse("--strategy","same_programs","-n","5","-s","0","--no-instruction-type-changes").validateGenerationOptions());
+ }
  @Test void requiresCountAndSeedOnlyForGeneratedSources() {
   assertThrows(IllegalArgumentException.class,()->parse().validateGenerationOptions());
   parse("--strategy","replay","--testcases","cases.json").validateGenerationOptions();

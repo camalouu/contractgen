@@ -318,6 +318,8 @@ class SynthesizeNew implements Callable<Integer> {
     @Option(names="--register-values", defaultValue="full", description="Imported register distribution: full or legacy.") String registerValues="full";
     @Option(names="--program-length", description="Random body length: integer or mean=...,sd=...,min=...,max=....") String programLength;
     @Option(names="--register-differences", description="Random changed-register count; integer or distribution.") String registerDifferences;
+    @Option(names="--no-instruction-type-changes", description="Random strategy: mutate operands only; keep each instruction mnemonic fixed. Control flow may still diverge.")
+    boolean noInstructionTypeChanges;
     @Option(names="--instruction-modifications", description="Random instruction mutation count; integer or distribution.") String instructionModifications;
     @Option(names="--skip-init", negatable=true, description="Exclude setup from Spike evidence; attacker still observes setup.") Boolean skipInit;
     @Option(names="--generation-batch-size", description="Coverage/random/replay batch size (defaults: 256/256/64).") Integer generationBatchSize;
@@ -526,7 +528,7 @@ class SynthesizeNew implements Callable<Integer> {
                 imported=new contractgen.riscv.isa.tests.ImportedTestCaseSource(strategy.name(),isa,
                     RISCV_OBSERVATION_TYPE.getGroups(template),seed,number,!processor.supportsMisalignedDataAccess(),
                     registerValues,batchSize,contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(
-                        programLength,registerDifferences,instructionModifications),skip);
+                        programLength,registerDifferences,instructionModifications),skip,!noInstructionTypeChanges);
                 source=imported;
             }
             tests=new ArrayList<>();
@@ -563,6 +565,7 @@ class SynthesizeNew implements Callable<Integer> {
             }
             metadata.put("registerValues",registerValues); metadata.put("skipInit",strategy==Strategy.replay?skipInit:Boolean.valueOf(skip));
             metadata.put("generationBatchSize",batchSize);
+            metadata.put("varyInstructionTypes",!noInstructionTypeChanges);
             metadata.put("distributions",contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(programLength,registerDifferences,instructionModifications));
             metadata.put("untargetedFunctions",imported==null?List.of():imported.untargeted);
             if(replayInput!=null) metadata.put("replayInputSha256",contractgen.riscv.isa.tests.ReplayTestCaseSource.digest(replayInput.toPath()));
@@ -620,7 +623,7 @@ class SynthesizeNew implements Callable<Integer> {
         } else {
             source += ", seed=" + seed + ", registerValues=" + registerValues + ", skipInit=" + skip;
             if (strategy == Strategy.coverage_guided || strategy == Strategy.random) source += ", batchSize=" + batchSize;
-            if (strategy == Strategy.random) source += ", distributions="
+            if (strategy == Strategy.random) source += ", varyInstructionTypes=" + !noInstructionTypeChanges + ", distributions="
                     + contractgen.riscv.isa.tests.imported.generation.RandomSource.Distributions.parse(
                             programLength, registerDifferences, instructionModifications);
         }
@@ -631,8 +634,8 @@ class SynthesizeNew implements Callable<Integer> {
         var parsed=spec==null?null:spec.commandLine().getParseResult();
         if(strategy!=Strategy.current && parsed!=null) for(String name:List.of("--sp","--random-prefix","--random-suffix","--reps","--reset-sequence","--bit-dist"))
             if(parsed.hasMatchedOption(name)) throw new IllegalArgumentException(name+" requires --strategy current");
-        if(strategy!=Strategy.random && (programLength!=null||registerDifferences!=null||instructionModifications!=null))
-            throw new IllegalArgumentException("Random distributions require --strategy random");
+        if(strategy!=Strategy.random && (noInstructionTypeChanges||programLength!=null||registerDifferences!=null||instructionModifications!=null))
+            throw new IllegalArgumentException("Random mutation options and distributions require --strategy random");
         if(strategy==Strategy.current && (skipInit!=null || generationBatchSize!=null || parsed!=null&&parsed.hasMatchedOption("--register-values")))
             throw new IllegalArgumentException("Imported generation options are incompatible with current");
         if(strategy==Strategy.replay) {

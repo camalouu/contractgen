@@ -33,6 +33,25 @@ class SourcesTest {
     }
 
     @Test
+    void operandOnlyMutationsPreserveMnemonicsAndDefaultCorpus() {
+        var dist = RandomSource.Distributions.parse("4", "4", "4");
+        var fixed = new RandomSource(EnumSet.allOf(Subset.class), 101, 1000, false,
+                RegisterValues.FULL, dist, 32, false);
+        for (int n = 0; n < 1000; n++) {
+            var d = fixed.draw();
+            assertEquals(d.first().size(), d.second().size());
+            for (int i = 0; i < d.first().size(); i++) {
+                assertEquals(d.first().get(i).mnemonic(), d.second().get(i).mnemonic());
+                assertNotEquals(d.first().get(i).encode(), d.second().get(i).encode());
+            }
+        }
+        assertEquals(fingerprint(all(new RandomSource(EnumSet.allOf(Subset.class), 101, 100,
+                        false, RegisterValues.FULL, dist, 32))),
+                fingerprint(all(new RandomSource(EnumSet.allOf(Subset.class), 101, 100,
+                        false, RegisterValues.FULL, dist, 32, true))));
+    }
+
+    @Test
     void differentProgramsIsDeterministicWithSequentialIds() {
         var functions = LeakageFunction.recipes();
         List<TestCase> a = all(new DifferentProgramsSource(EnumSet.allOf(Subset.class), functions, 42, 777, false, RegisterValues.FULL));
